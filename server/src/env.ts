@@ -8,7 +8,10 @@ const schema = z.object({
   WEB_ORIGIN: z.string().default('http://localhost:5173'),
   // Key for the CIN fingerprint. Changing it later makes existing fingerprints unmatchable.
   CIN_HASH_SECRET: z.string().min(32, 'CIN_HASH_SECRET must be at least 32 characters (see server/.env.example)'),
-  // Needed from the agent step onwards (free key from https://aistudio.google.com/apikey)
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
+  // The simulated Mon e-ID phone. Must stay off in production: there the approval comes from DGSN.
+  MON_EID_SIMULATOR: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  // Free key from https://aistudio.google.com/apikey
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
 });
 

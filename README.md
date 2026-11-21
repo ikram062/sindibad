@@ -1,25 +1,34 @@
 # Sindibad
 
-Chat-first investing assistant for Morocco (Casablanca stocks + IPOs). Hackathon prototype.
+Chat-first ticket assistant for Moroccans (football, concerts, festivals, in Morocco and abroad). Hackathon prototype.
 
 ## Stack
-- `web/`: React + Vite + TypeScript + Tailwind, Vercel AI SDK (`@ai-sdk/react`)
-- `server/`: Express + TypeScript, Drizzle ORM + PostgreSQL, Vercel AI SDK (`ai`) with Gemini (`@ai-sdk/google`)
+- `web/`: React + Vite + TypeScript + Tailwind, GSAP + Lenis (landing page), AI SDK UI (`@ai-sdk/react`)
+- `server/`: Express + TypeScript, Drizzle ORM + PostgreSQL, AI SDK (`ai`) with Gemini (`@ai-sdk/google`)
 
 ## Setup
 1. Create a Postgres database named `sindibad` (pgAdmin).
-2. `server/.env`: copy from `server/.env.example`, set the real password in `DATABASE_URL`, set `CIN_HASH_SECRET` (the file shows the command to generate one), and add a free Gemini key from https://aistudio.google.com/apikey
-3. Install and create tables:
+2. `server/.env`: copy from `server/.env.example` and fill in `DATABASE_URL` (real password), `CIN_HASH_SECRET` (the file shows the command) and `GOOGLE_GENERATIVE_AI_API_KEY` (free, https://aistudio.google.com/apikey). Put real values in `.env`, never in `.env.example`.
+3. Install, create tables, load the demo catalogue:
    ```
-   npm install            # root (concurrently)
+   npm install
    npm install --prefix server
    npm install --prefix web
    npm run db:push
+   npm run db:seed --prefix server
    ```
 4. Run both apps: `npm run dev` (API on :4001, web on :5173)
 
-## Auth and CIN verification
-- Email + password sign-in; the session is an httpOnly cookie backed by the `sessions` table.
-- After first sign-up the user is asked to verify their CIN. They may skip, but every purchase route is mounted behind `requireKyc` (`server/src/routes/purchases.ts`) and returns `403 KYC_REQUIRED` until verified.
-- The CIN itself is never stored, only an HMAC fingerprint (one CIN = one account). The check itself is a **mock** (`server/src/kyc/provider.ts`): format, expiry and age only. Swap it for a real KYC vendor behind the `KycProvider` interface.
-- Tests: `npm test --prefix server` runs against whatever `DATABASE_URL` points to, so point it at a throwaway database, not your real one.
+## How it works
+- **Chat agent** (`server/src/agent`, `routes/chat.ts`): Gemini with tools that only READ or DRAFT. It replies in the user's language (English, French, Arabic, Darija). Default model `gemini-3.5-flash-lite` (override with `GEMINI_MODEL`); the bigger Flash models were slow or overloaded on the free tier.
+- **Proposal then confirm**: the agent can never buy or change settings. `draft_purchase` / `draft_rule` create a pending proposal, shown as a card the user confirms. `services/purchases.ts` is the only place money is "spent" and re-checks identity, eligibility and card every time.
+- **Rules** (Rules page): standing instructions created in chat ("tell me when X opens", "buy if under Y"). A plain-code engine (`services/rules.ts`, every 30 s) fires them once.
+- **Autonomy** (Settings page): "always ask" (default) or "rules may buy by themselves within limits". Only the Settings page can change it, and turning it on needs verified identity, a card and the password.
+- **Identity**: sign-in is email + password (httpOnly cookie sessions). Buying needs a CIN verification through a **simulated Mon e-ID** flow (QR + a simulated phone). It is NOT connected to DGSN. The CIN is never stored, only an HMAC fingerprint. Swap `server/src/kyc/` for the real integration when access exists.
+- Events are REAL listings from iticket.ma (Morocco only), copied on 2026-11-21 by hand into `server/src/db/catalog.ts` (a snapshot, not a live feed; prices are "from" prices). Payments (`payments/provider.ts`), identity and exchange rates are simulated, and confirming a purchase issues no real ticket: cards link to the real seller page.
+
+## Tests
+`npm test --prefix server` runs against whatever `DATABASE_URL` points to, so point it at a throwaway database, never your real one.
+
+## Demo tips
+- `npm run db:seed:users --prefix server` creates five demo accounts (password demo1234). The mic button in the chat uses the browser's speech recognition (Chrome/Edge).

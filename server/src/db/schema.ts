@@ -5,8 +5,6 @@ import {
   jsonb,
   numeric,
   pgTable,
-  primaryKey,
-  real,
   serial,
   text,
   timestamp,
@@ -14,21 +12,18 @@ import {
 } from 'drizzle-orm/pg-core';
 
 /**
- * Sindibad schema (stocks + IPOs only).
+ * Sindibad schema (tickets).
  *
- * Design rules taken from the report:
- *  - Sindibad is NOT the broker. `orders` and `holdings` model what the PARTNER
- *    broker holds. In the prototype a MockBroker owns these tables; with a real
- *    partner they become API calls and these tables become a cache/audit copy.
- *  - The agent never executes anything: it creates a `proposals` row, and only a
- *    user confirmation turns it into a real `rules` / `orders` row.
- *  - Every price carries its recorded time + delay, so alerts can state it.
- *  - Money is numeric (string in JS), never float.
+ * Principles:
+ *  - The AI never executes. It writes a `proposals` row; only a user confirmation (or a pre-authorised
+ *    rule inside the user's autonomy limits) turns it into a `purchases` row.
+ *  - Money is numeric (a string in JS). Totals are computed in services/totals.ts only.
+ *  - Nothing sensitive is stored: no CIN (only a fingerprint), no card number (only brand + last 4).
  */
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 
-// ───────────────────────── users & limits ─────────────────────────
+// ───────────────────────── users, sessions, identity ─────────────────────────
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -43,14 +38,14 @@ export const users = pgTable('users', {
   kycStatus: text('kyc_status', { enum: ['unverified', 'verified'] })
     .notNull()
     .default('unverified'),
+  /** How the identity was confirmed, e.g. 'mon_eid_simulated'. */
+  kycMethod: text('kyc_method'),
   /**
    * Keyed hash (HMAC-SHA256) of the normalized CIN. The CIN itself is never stored;
    * the unique constraint stops one CIN from being linked to two accounts.
    */
   cinHash: text('cin_hash').unique(),
   kycVerifiedAt: ts('kyc_verified_at'),
-  /** Risk warning must be accepted before the first order. */
-  riskWarningAcceptedAt: ts('risk_warning_accepted_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
 
@@ -68,239 +63,206 @@ export const sessions = pgTable(
   (t) => [index('sessions_user_idx').on(t.userId)],
 );
 
+export type IdentityClaims = { cin: string; fullName: string; dateOfBirth: string; expiryDate: string };
+
+/** One Mon e-ID verification attempt (QR shown on the website, approved on the phone). */
+export const identitySessions = pgTable('identity_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['pending', 'approved', 'declined', 'completed', 'failed'] })
+    .notNull()
+    .default('pending'),
+  /** What the phone released. Cleared as soon as the session is completed. */
+  claims: jsonb('claims').$type<IdentityClaims>(),
+  failureReason: text('failure_reason'),
+  expiresAt: ts('expires_at').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+// ───────────────────────── catalogue & rates ─────────────────────────
+
+export type Tier = { name: string; price: number };
+
+export const events = pgTable('events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  category: text('category', { enum: ['football', 'concert', 'festival', 'other'] }).notNull(),
+  city: text('city').notNull(),
+  /** ISO 3166-1 alpha-2, e.g. MA, KR, FR. */
+  country: text('country').notNull(),
+  venue: text('venue').notNull(),
+  startsAt: ts('starts_at').notNull(),
+  /** Currency the seller charges in (ISO 4217). */
+  currency: text('currency').notNull(),
+  tiers: jsonb('tiers').$type<Tier[]>().notNull(),
+  seller: text('seller').notNull(),
+  sellerUrl: text('seller_url'),
+  saleOpensAt: ts('sale_opens_at').notNull(),
+  soldOut: boolean('sold_out').notNull().default(false),
+  /** When a person last checked this listing against the seller's page. null = demo/fixture data. */
+  verifiedAt: ts('verified_at'),
+});
+
+/** Dirhams per one unit of `currency`. Demo rates; a real build reads a licensed provider. */
+export const fxRates = pgTable('fx_rates', {
+  currency: text('currency').primaryKey(),
+  madPerUnit: numeric('mad_per_unit', { precision: 14, scale: 6 }).notNull(),
+  recordedAt: ts('recorded_at').notNull().defaultNow(),
+  source: text('source').notNull().default('demo'),
+});
+
+// ───────────────────────── user settings & payment ─────────────────────────
+
 /**
- * The "envelope": a fixed amount the user sets aside for rules. Rules can only
- * spend from it. Also holds the per-user caps (low defaults, raised after 30 days).
+ * Saved card, SIMULATED: brand and last four digits only. A real build stores a token
+ * from a PCI-compliant payment provider, never a card number.
  */
-export const envelopes = pgTable('envelopes', {
+export const paymentMethods = pgTable('payment_methods', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  brand: text('brand').notNull(),
+  last4: text('last4').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+/** 'ask' = every purchase needs the user's tap. 'auto' = a pre-authorised rule may buy within these limits. */
+export const userSettings = pgTable('user_settings', {
   userId: uuid('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
-  balanceMad: numeric('balance_mad', { precision: 14, scale: 2 }).notNull().default('0'),
-  maxPerOrderMad: numeric('max_per_order_mad', { precision: 14, scale: 2 }).notNull().default('500'),
-  maxPerDayMad: numeric('max_per_day_mad', { precision: 14, scale: 2 }).notNull().default('1000'),
-  maxPerWeekMad: numeric('max_per_week_mad', { precision: 14, scale: 2 }).notNull().default('2000'),
-  maxPerMonthMad: numeric('max_per_month_mad', { precision: 14, scale: 2 }).notNull().default('5000'),
-  maxAutoOrdersPerWeek: integer('max_auto_orders_per_week').notNull().default(3),
-  limitsRaisedAt: ts('limits_raised_at'),
+  autonomy: text('autonomy', { enum: ['ask', 'auto'] })
+    .notNull()
+    .default('ask'),
+  maxPerPurchaseMad: numeric('max_per_purchase_mad', { precision: 14, scale: 2 }).notNull().default('1000'),
+  maxPerMonthMad: numeric('max_per_month_mad', { precision: 14, scale: 2 }).notNull().default('3000'),
+  autoEnabledAt: ts('auto_enabled_at'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
-// ───────────────────────── market data ─────────────────────────
+// ───────────────────────── rules, proposals, purchases ─────────────────────────
 
-export const instruments = pgTable('instruments', {
-  ticker: text('ticker').primaryKey(),
-  name: text('name').notNull(),
-  sector: text('sector'),
-  currency: text('currency').notNull().default('MAD'),
-});
-
-export const priceTicks = pgTable(
-  'price_ticks',
+/** A standing instruction the user gave in chat, e.g. "buy 2 tickets if this drops under 900 MAD". */
+export const rules = pgTable(
+  'rules',
   {
-    id: serial('id').primaryKey(),
-    ticker: text('ticker')
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
       .notNull()
-      .references(() => instruments.ticker, { onDelete: 'cascade' }),
-    priceMad: numeric('price_mad', { precision: 12, scale: 2 }).notNull(),
-    /** When the price was recorded. Every alert/answer must state this. */
-    recordedAt: ts('recorded_at').notNull().defaultNow(),
-    /** Public Bourse prices are delayed by at least 15 minutes. */
-    delayMinutes: integer('delay_minutes').notNull().default(15),
-    /** Implausible jump: held back, never triggers alerts. */
-    flagged: boolean('flagged').notNull().default(false),
-    source: text('source').notNull().default('seed'),
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['alert', 'buy'] }).notNull(),
+    /** Either a specific event, or a free-text match such as "Morocco football Rabat". */
+    eventId: uuid('event_id').references(() => events.id),
+    query: text('query'),
+    tier: text('tier'),
+    /** Per ticket, in dirhams. null = any price. */
+    maxPriceMad: numeric('max_price_mad', { precision: 14, scale: 2 }),
+    quantity: integer('quantity').notNull().default(1),
+    /** Every rule must expire. */
+    expiresAt: ts('expires_at').notNull(),
+    status: text('status', { enum: ['active', 'paused', 'fulfilled', 'cancelled', 'expired'] })
+      .notNull()
+      .default('active'),
+    outcome: text('outcome', { enum: ['notified', 'proposed', 'purchased', 'blocked'] }),
+    outcomeDetail: text('outcome_detail'),
+    firedAt: ts('fired_at'),
+    /** The user's own words, so the Rules page can show where the rule came from. */
+    sourceText: text('source_text'),
+    createdAt: ts('created_at').notNull().defaultNow(),
   },
-  (t) => [index('price_ticks_ticker_time_idx').on(t.ticker, t.recordedAt)],
+  (t) => [index('rules_user_status_idx').on(t.userId, t.status)],
 );
 
-export const ipos = pgTable('ipos', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  ticker: text('ticker'),
-  priceMad: numeric('price_mad', { precision: 12, scale: 2 }),
-  opensAt: ts('opens_at'),
-  closesAt: ts('closes_at'),
-  subscribeWhere: text('subscribe_where'),
-  sourceUrl: text('source_url'),
-  /** Watcher drafts as 'pending'; a teammate confirms before anything goes out. */
-  status: text('status', { enum: ['pending', 'published'] }).notNull().default('pending'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  confirmedAt: ts('confirmed_at'),
-});
-
-// ───────────────────────── alerts, proposals, rules ─────────────────────────
-
-export const alerts = pgTable('alerts', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  ticker: text('ticker')
-    .notNull()
-    .references(() => instruments.ticker),
-  direction: text('direction', { enum: ['below', 'above'] }).notNull(),
-  thresholdMad: numeric('threshold_mad', { precision: 12, scale: 2 }).notNull(),
-  status: text('status', { enum: ['active', 'triggered', 'cancelled', 'expired'] })
-    .notNull()
-    .default('active'),
-  /** One notification per crossing, not one per update. */
-  triggeredAt: ts('triggered_at'),
-  expiresAt: ts('expires_at'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-});
+export type ProposalKind = 'purchase' | 'rule';
 
 /**
- * Human-in-the-loop. The agent can only DRAFT: it writes a proposal that the UI
- * renders as a confirm card. Nothing is executed until the user confirms.
+ * Human-in-the-loop. The agent (or a rule in 'ask' mode) can only DRAFT: it writes a proposal that the
+ * UI renders as a confirm card. Nothing happens until the user confirms.
  */
 export const proposals = pgTable('proposals', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  kind: text('kind', { enum: ['order', 'rule'] }).notNull(),
-  /** Exactly what the user will confirm (ticker, amount, limit price, end date…). */
-  payload: jsonb('payload').notNull(),
-  /** Line-by-line fee breakdown shown on the card. */
-  fees: jsonb('fees').notNull(),
+  kind: text('kind', { enum: ['purchase', 'rule'] }).notNull(),
+  /** Exactly what will be executed on confirm. */
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  /** What the card shows (cost lines, totals, rule summary). */
+  summary: jsonb('summary').$type<Record<string, unknown>>().notNull(),
+  source: text('source', { enum: ['chat', 'rule'] }).notNull().default('chat'),
   status: text('status', { enum: ['pending', 'confirmed', 'dismissed', 'expired'] })
     .notNull()
     .default('pending'),
+  expiresAt: ts('expires_at').notNull(),
   createdAt: ts('created_at').notNull().defaultNow(),
   resolvedAt: ts('resolved_at'),
 });
 
-export const rules = pgTable('rules', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  proposalId: uuid('proposal_id').references(() => proposals.id),
-  ticker: text('ticker')
-    .notNull()
-    .references(() => instruments.ticker),
-  /** "buy if the price falls under X": sent to the broker as a limit order. */
-  triggerPriceMad: numeric('trigger_price_mad', { precision: 12, scale: 2 }).notNull(),
-  amountMad: numeric('amount_mad', { precision: 14, scale: 2 }).notNull(),
-  /** Every rule must expire. */
-  expiresAt: ts('expires_at').notNull(),
-  status: text('status', { enum: ['active', 'filled', 'expired', 'cancelled'] })
-    .notNull()
-    .default('active'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  cancelledAt: ts('cancelled_at'),
-});
-
-// ───────────────────────── partner broker side (mocked) ─────────────────────────
-
-export const orders = pgTable(
-  'orders',
+export const purchases = pgTable(
+  'purchases',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    ticker: text('ticker')
+    eventId: uuid('event_id')
       .notNull()
-      .references(() => instruments.ticker),
-    kind: text('kind', { enum: ['direct', 'rule'] }).notNull(),
+      .references(() => events.id),
+    tier: text('tier').notNull(),
+    quantity: integer('quantity').notNull(),
+    unitPriceLocal: numeric('unit_price_local', { precision: 14, scale: 2 }).notNull(),
+    currency: text('currency').notNull(),
+    fxMadPerUnit: numeric('fx_mad_per_unit', { precision: 14, scale: 6 }).notNull(),
+    ticketsMad: numeric('tickets_mad', { precision: 14, scale: 2 }).notNull(),
+    spreadMad: numeric('spread_mad', { precision: 14, scale: 2 }).notNull(),
+    feeMad: numeric('fee_mad', { precision: 14, scale: 2 }).notNull(),
+    totalMad: numeric('total_mad', { precision: 14, scale: 2 }).notNull(),
+    status: text('status', { enum: ['paid', 'failed'] }).notNull(),
+    paymentRef: text('payment_ref'),
+    via: text('via', { enum: ['manual', 'auto_rule'] }).notNull(),
     ruleId: uuid('rule_id').references(() => rules.id),
-    amountMad: numeric('amount_mad', { precision: 14, scale: 2 }).notNull(),
-    /** null = at market. Rules are always limit orders held by the broker. */
-    limitPriceMad: numeric('limit_price_mad', { precision: 12, scale: 2 }),
-    quantity: numeric('quantity', { precision: 14, scale: 4 }),
-    fillPriceMad: numeric('fill_price_mad', { precision: 12, scale: 2 }),
-    status: text('status', { enum: ['open', 'filled', 'cancelled', 'rejected'] })
-      .notNull()
-      .default('open'),
-    fees: jsonb('fees'),
+    proposalId: uuid('proposal_id').references(() => proposals.id),
     createdAt: ts('created_at').notNull().defaultNow(),
-    filledAt: ts('filled_at'),
   },
-  (t) => [index('orders_user_idx').on(t.userId, t.createdAt)],
-);
-
-/** Held at the broker in the user's name (Maroclear is the central depository). */
-export const holdings = pgTable(
-  'holdings',
-  {
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    ticker: text('ticker')
-      .notNull()
-      .references(() => instruments.ticker),
-    quantity: numeric('quantity', { precision: 14, scale: 4 }).notNull(),
-    avgPriceMad: numeric('avg_price_mad', { precision: 12, scale: 2 }).notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.userId, t.ticker] })],
-);
-
-// ───────────────────────── knowledge base for the assistant (RAG) ─────────────────────────
-
-export const documents = pgTable('documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  title: text('title').notNull(),
-  sourceUrl: text('source_url'),
-  language: text('language'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-});
-
-/**
- * Embeddings stored as float arrays; cosine similarity is computed in the app.
- * Fine for a few hundred chunks and needs no extension. At startup scale, switch
- * this column to pgvector's `vector(768)` with an HNSW index.
- */
-export const documentChunks = pgTable(
-  'document_chunks',
-  {
-    id: serial('id').primaryKey(),
-    documentId: uuid('document_id')
-      .notNull()
-      .references(() => documents.id, { onDelete: 'cascade' }),
-    position: integer('position').notNull(),
-    content: text('content').notNull(),
-    embedding: real('embedding').array(),
-  },
-  (t) => [index('document_chunks_doc_idx').on(t.documentId, t.position)],
+  (t) => [index('purchases_user_idx').on(t.userId, t.createdAt)],
 );
 
 // ───────────────────────── conversation, notifications, audit ─────────────────────────
 
+/** One running conversation per user. Messages are AI SDK UIMessages (text + tool parts) stored as-is. */
 export const conversations = pgTable('conversations', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
     .notNull()
+    .unique()
     .references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: ts('created_at').notNull().defaultNow(),
+  // shortcut: whole history in one jsonb value, split into a messages table when conversations get long
+  messages: jsonb('messages').$type<unknown[]>().notNull().default([]),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
-export const messages = pgTable(
-  'messages',
+export const notifications = pgTable(
+  'notifications',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    conversationId: uuid('conversation_id')
+    userId: uuid('user_id')
       .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
-    role: text('role', { enum: ['user', 'assistant', 'system'] }).notNull(),
-    /** AI SDK UIMessage parts (text, tool calls/results) stored as-is. */
-    parts: jsonb('parts').notNull(),
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['rule', 'purchase', 'system'] }).notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    /** When set, the notification offers a Confirm button for that proposal. */
+    proposalId: uuid('proposal_id').references(() => proposals.id),
+    readAt: ts('read_at'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
-  (t) => [index('messages_conv_idx').on(t.conversationId, t.createdAt)],
+  (t) => [index('notifications_user_idx').on(t.userId, t.createdAt)],
 );
-
-export const notifications = pgTable('notifications', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  kind: text('kind', { enum: ['alert', 'ipo', 'rule', 'system'] }).notNull(),
-  body: text('body').notNull(),
-  data: jsonb('data'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  readAt: ts('read_at'),
-});
 
 export const auditLog = pgTable('audit_log', {
   id: serial('id').primaryKey(),

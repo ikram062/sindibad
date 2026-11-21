@@ -9,10 +9,12 @@ export class ApiError extends Error {
   }
 }
 
+type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
+
 /** JSON call to the Express API. Vite proxies /api, so the session cookie is same-origin. */
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+export async function api<T>(path: string, body?: unknown, method: Method = body === undefined ? 'GET' : 'POST'): Promise<T> {
   const res = await fetch(`/api${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
+    method,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })

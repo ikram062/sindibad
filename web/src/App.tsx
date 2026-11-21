@@ -1,31 +1,51 @@
 import { useEffect, useState } from 'react'
-import { AuthScreen, KycScreen } from './AuthScreens'
+import AppLayout from './AppLayout'
+import { AuthScreen } from './AuthScreens'
 import { useAuth } from './auth'
-import ChatShell from './ChatShell'
 import Landing from './Landing'
+import MonEidScreen from './MonEid'
+import ChatPage from './pages/ChatPage'
+import RulesPage from './pages/RulesPage'
+import SettingsPage from './pages/SettingsPage'
 
-/** Signed out -> sign in. Signed in but unverified -> CIN check (skippable, but nothing can be bought). */
-function ChatGate() {
+const PAGES: Record<string, () => React.ReactElement> = {
+  '#/chat': () => <ChatPage />,
+  '#/rules': () => <RulesPage />,
+  '#/settings': () => <SettingsPage />,
+}
+const APP_ROUTES = [...Object.keys(PAGES), '#/verify']
+
+function Redirect({ to }: { to: string }) {
+  useEffect(() => {
+    location.hash = to
+  }, [to])
+  return null
+}
+
+/** Signed out -> sign in. Signed in but unverified -> Mon e-ID (skippable, but nothing can be bought). */
+function Gate({ route }: { route: string }) {
   const { user } = useAuth()
   const [skipped, setSkipped] = useState(false)
-  const [verifying, setVerifying] = useState(false)
 
   if (user === undefined) return <div className="grid min-h-full place-items-center text-brand/60">Loading…</div>
   if (!user) return <AuthScreen />
-  if (user.kycStatus !== 'verified' && (!skipped || verifying)) {
+
+  const verified = user.kycStatus === 'verified'
+  if (route === '#/verify' && verified) return <Redirect to="#/chat" />
+  if (route === '#/verify' || (!verified && !skipped)) {
     return (
-      <KycScreen
+      <MonEidScreen
         onSkip={() => {
           setSkipped(true)
-          setVerifying(false)
+          location.hash = '#/chat'
         }}
       />
     )
   }
-  return <ChatShell onVerify={() => setVerifying(true)} />
+  return <AppLayout route={route}>{PAGES[route]!()}</AppLayout>
 }
 
-// Two screens, no router needed: "#/chat" opens the assistant, anything else is the landing page.
+// Hash routing, no router library: the landing page, then four app screens.
 export default function App() {
   const [hash, setHash] = useState(location.hash)
   useEffect(() => {
@@ -33,5 +53,5 @@ export default function App() {
     addEventListener('hashchange', onChange)
     return () => removeEventListener('hashchange', onChange)
   }, [])
-  return hash === '#/chat' ? <ChatGate /> : <Landing />
+  return APP_ROUTES.includes(hash) ? <Gate route={hash} /> : <Landing />
 }

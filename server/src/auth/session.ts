@@ -11,7 +11,7 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
-const userColumns = {
+export const userColumns = {
   id: users.id,
   email: users.email,
   name: users.name,

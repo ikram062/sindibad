@@ -63,7 +63,7 @@ function ChatDemo() {
         .to(
           total,
           {
-            v: 897,
+            v: 640,
             duration: 1,
             ease: 'power2.out',
             onUpdate: () => {
@@ -95,7 +95,7 @@ function ChatDemo() {
       </div>
 
       <div className="m-user ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-[15px] text-cream">
-        bghit tickets l concert f Seoul, ch7al ghadi nkhlles?
+        bghit 2 tickets l Tiakola f Casablanca, ch7al ghadi nkhlles?
       </div>
 
       <div className="m-typing mt-3 flex w-fit gap-1 rounded-2xl rounded-bl-md bg-brand/5 px-4 py-3">
@@ -114,18 +114,17 @@ function ChatDemo() {
 
       <div className="m-card mt-3 rounded-2xl border border-brand/10 bg-cream/70 p-4 text-sm">
         <div className="mb-3 flex items-center gap-2 font-semibold text-brand">
-          <Ticket className="size-4 text-gold" /> K-pop concert · Seoul
+          <Ticket className="size-4 text-gold" /> Tiakola · Casablanca · 5 Dec 2026
         </div>
-        <Line label="Ticket · 132,000 KRW" value="884 MAD" />
-        <Line label="Rate 1 KRW = 0.0067 MAD · 14:02" value="" muted />
-        <Line label="Conversion spread (1.5%)" value="13 MAD" />
+        <Line label="2 × Standard · from 320 MAD" value="640 MAD" />
         <Line label="Sindibad fee" value="0 MAD" />
+        <Line label="Listing from iticket.ma · checked 21 Nov 2026" value="" muted />
         <div className="m-line flex items-center gap-1.5 py-1.5 text-emerald-700">
-          <Check className="size-4" /> Card allowance: enough left this year
+          <Check className="size-4" /> You can buy this now
         </div>
         <div className="mt-2 flex items-baseline justify-between border-t border-brand/10 pt-3">
           <span className="font-semibold text-brand">Total</span>
-          <span className="m-total text-xl font-bold text-brand">897 MAD</span>
+          <span className="m-total text-xl font-bold text-brand">640 MAD</span>
         </div>
         <button
           type="button"
@@ -191,7 +190,7 @@ function Hero() {
         <div>
           <img src="/logo.png" alt="Sindibad" width={636} height={245} className="h-logo mb-8 w-64 md:w-80" />
           <div className="h-fade mb-4 text-sm font-semibold uppercase tracking-[0.18em]">
-            <ShinyText text="Tickets for Moroccans, anywhere" color="#0f4a36" shineColor="#d9a441" speed={3} />
+            <ShinyText text="Tickets in Morocco, made simple" color="#0f4a36" shineColor="#d9a441" speed={3} />
           </div>
           <SplitText
             tag="h1"

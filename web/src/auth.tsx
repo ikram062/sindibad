@@ -10,15 +10,14 @@ export type User = {
   kycVerifiedAt: string | null
 }
 
-export type CinInput = { cin: string; fullName: string; dateOfBirth: string; expiryDate: string; consent: boolean }
-
 type Auth = {
   /** undefined while the first /me call is in flight, null when signed out. */
   user: User | null | undefined
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, name: string) => Promise<void>
   signOut: () => Promise<void>
-  verifyCin: (input: CinInput) => Promise<void>
+  /** Used when Mon e-ID verification completes and the server returns the updated user. */
+  applyUser: (user: User) => void
 }
 
 const Ctx = createContext<Auth | null>(null)
@@ -41,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api('/auth/logout', {})
       setUser(null)
     },
-    verifyCin: async (input) => setUser((await api<{ user: User }>('/kyc/cin', input)).user),
+    applyUser: setUser,
   }
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
