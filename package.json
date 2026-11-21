@@ -1,0 +1,23 @@
+{
+  "name": "sindibad",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,yellow \"npm run dev --prefix server\" \"npm run dev --prefix web\"",
+    "db:push": "npm run db:push --prefix server",
+    "db:studio": "npm run db:studio --prefix server",
+    "typecheck": "npm run typecheck --prefix server && npm run build --prefix web"
+  },
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikram062/sindibad.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ikram062/sindibad/issues"
+  },
+  "homepage": "https://github.com/ikram062/sindibad#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}
