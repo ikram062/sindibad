@@ -62,8 +62,9 @@ const auto = await executePurchase(youssef, { eventId: aissawa.id, quantity: 1, 
 if (!auto.ok) throw new Error(`Seed purchase failed: ${auto.message}`);
 // Quote the real total, so the demo text can never disagree with the purchase.
 const detail = `Bought 1 × ${auto.purchase.tier} for ${aissawa.title}: ${Number(auto.purchase.totalMad)} MAD.`;
-await db.update(rules).set({ outcomeDetail: detail }).where(eq(rules.id, done!.id));
-await db.insert(notifications).values({ userId: youssef.id, kind: 'purchase', title: 'Tickets bought automatically', body: `Your rule: "Buy a Soirée Aïssawa ticket if under 110 MAD". ${detail}` });
+const data = { event: aissawa.title, rule: 'Buy a Soirée Aïssawa ticket if under 110 MAD', quantity: 1, tier: auto.purchase.tier, total: Number(auto.purchase.totalMad) };
+await db.update(rules).set({ outcomeDetail: detail, outcomeData: data }).where(eq(rules.id, done!.id));
+await db.insert(notifications).values({ userId: youssef.id, kind: 'purchase', title: 'Tickets bought automatically', body: `Your rule: "${data.rule}". ${detail}`, code: 'RULE_PURCHASED', params: data });
 
 // 3. Nadia: verified, but no card and nothing else (can browse, cannot buy until she adds a card).
 await addUser('nadia@demo.ma', 'Nadia El Idrissi', { verified: true });

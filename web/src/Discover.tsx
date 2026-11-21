@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { useAuth } from './auth'
 import type { EventView } from './cards'
-import { Chip, mad } from './ui'
+import { useI18n } from './i18n'
+import type { Key } from './locales/en'
+import { Chip } from './ui'
 
+// Deliberately the same in every interface language: they show that the assistant understands all of them.
 const PROMPTS = [
   'What concerts are there in Rabat in December?',
   'Je voudrais 2 billets pour Tiakola à Casablanca',
@@ -15,16 +18,15 @@ const PROMPTS = [
 /** The first thing a signed-in user sees: a greeting, ways to start, and their status at a glance. */
 export function Hero({ onAsk }: { onAsk: (text: string) => void }) {
   const { user } = useAuth()
+  const { t } = useI18n()
   const first = user?.name.split(' ')[0] ?? ''
   return (
     <section className="relative overflow-hidden rounded-3xl bg-brand p-7 text-cream sm:p-9">
-      <div className="pointer-events-none absolute -right-16 -top-20 size-72 rounded-full bg-gold/25 blur-3xl" />
+      <div className="pointer-events-none absolute -end-16 -top-20 size-72 rounded-full bg-gold/25 blur-3xl" />
       <div className="relative">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold">Tickets in Morocco</p>
-        <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">Hi {first}, what are you going out to?</h1>
-        <p className="mt-2 max-w-xl text-cream/75">
-          Ask in English, Français, العربية or Darija. I find the tickets and show the full cost. You confirm every purchase.
-        </p>
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold">{t('home.eyebrow')}</p>
+        <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">{t('home.title', { name: first })}</h1>
+        <p className="mt-2 max-w-xl text-cream/75">{t('home.body')}</p>
         <div className="mt-5 flex flex-wrap gap-2">
           {PROMPTS.map((p) => (
             <button
@@ -32,7 +34,7 @@ export function Hero({ onAsk }: { onAsk: (text: string) => void }) {
               type="button"
               dir="auto"
               onClick={() => onAsk(p)}
-              className="rounded-full border border-cream/25 bg-cream/10 px-4 py-2 text-left text-sm transition hover:border-gold hover:bg-cream/20"
+              className="rounded-full border border-cream/25 bg-cream/10 px-4 py-2 text-start text-sm transition hover:border-gold hover:bg-cream/20"
             >
               {p}
             </button>
@@ -61,6 +63,7 @@ function Tile({ href, icon, label, value, tone }: { href: string; icon: React.Re
 /** Four quick facts that decide what the user can do right now, each linking to where it is changed. */
 export function StatusStrip() {
   const { user } = useAuth()
+  const { t } = useI18n()
   const [s, setS] = useState<SettingsLite | null>(null)
   const [active, setActive] = useState<number | null>(null)
 
@@ -75,57 +78,57 @@ export function StatusStrip() {
       <Tile
         href={verified ? '#/settings' : '#/verify'}
         icon={verified ? <BadgeCheck className="size-5" /> : <ShieldAlert className="size-5" />}
-        label={verified ? 'Identity (Mon e-ID)' : 'Identity'}
-        value={verified ? 'Verified' : 'Not verified yet'}
+        label={verified ? t('status.identityMon') : t('status.identity')}
+        value={verified ? t('status.verified') : t('status.notVerified')}
         tone={verified ? 'ok' : 'warn'}
       />
       <Tile
         href="#/settings"
         icon={<CreditCard className="size-5" />}
-        label="Payment card"
-        value={s ? (s.card ? `${s.card.brand} •••• ${s.card.last4}` : 'No card yet') : '…'}
+        label={t('status.card')}
+        value={s ? (s.card ? `${s.card.brand} •••• ${s.card.last4}` : t('status.noCard')) : '…'}
         tone={s?.card ? 'ok' : 'warn'}
       />
       <Tile
         href="#/settings"
         icon={<SlidersHorizontal className="size-5" />}
-        label="Purchases"
-        value={s ? (s.settings.autonomy === 'auto' ? 'Automatic, within limits' : 'Always ask me') : '…'}
+        label={t('status.purchases')}
+        value={s ? (s.settings.autonomy === 'auto' ? t('status.auto') : t('status.ask')) : '…'}
         tone="plain"
       />
-      <Tile href="#/rules" icon={<Bell className="size-5" />} label="Your rules" value={active === null ? '…' : `${active} active`} tone="plain" />
+      <Tile href="#/rules" icon={<Bell className="size-5" />} label={t('status.rules')} value={active === null ? '…' : t('status.active', { n: active })} tone="plain" />
     </div>
   )
 }
 
-const CATEGORY = { concert: 'Concert', festival: 'Festival', football: 'Football', other: 'Show' } as const
-
 function EventTile({ e, onAsk }: { e: EventView; onAsk: (text: string) => void }) {
+  const { t, mad, locale, city } = useI18n()
   const d = new Date(e.startsAt)
+  const cat = `cat.${e.category}` as Key
   return (
     <div className="flex gap-4 rounded-2xl border border-brand/10 bg-white p-4 transition hover:border-gold hover:shadow-sm">
       <div className="grid size-16 shrink-0 place-items-center rounded-xl bg-brand text-center text-cream">
         <div>
-          <div className="text-xl font-bold leading-none">{d.toLocaleDateString('en-GB', { day: 'numeric', timeZone: 'UTC' })}</div>
-          <div className="mt-1 text-[11px] uppercase tracking-wide text-gold">{d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}</div>
+          <div className="text-xl font-bold leading-none">{d.toLocaleDateString(locale, { day: 'numeric', timeZone: 'UTC' })}</div>
+          <div className="mt-1 text-[11px] uppercase tracking-wide text-gold">{d.toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })}</div>
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold leading-snug text-brand">{e.title}</h3>
-          <Chip>{CATEGORY[e.category as keyof typeof CATEGORY] ?? 'Show'}</Chip>
+          <h3 dir="auto" className="font-semibold leading-snug text-brand">{e.title}</h3>
+          <Chip>{t(['concert', 'festival', 'football'].includes(e.category) ? cat : 'cat.other')}</Chip>
         </div>
-        <p className="mt-1 flex items-center gap-1 text-xs text-ink/55"><MapPin className="size-3 shrink-0" />{e.venue}, {e.city}</p>
+        <p dir="auto" className="mt-1 flex items-center gap-1 text-xs text-ink/55"><MapPin className="size-3 shrink-0" />{e.venue}, {city(e.city)}</p>
         <div className="mt-auto flex items-end justify-between gap-2 pt-3">
-          <span className="text-sm text-ink/60">from <b className="text-base text-brand">{mad(e.fromPriceMad)}</b></span>
+          <span className="text-sm text-ink/60">{t('events.from')} <b className="text-base text-brand">{mad(e.fromPriceMad)}</b></span>
           <span className="flex items-center gap-3 text-sm">
             {e.sellerUrl && (
-              <a href={e.sellerUrl} target="_blank" rel="noreferrer" aria-label={`${e.title} on ${e.seller}`} className="text-ink/40 hover:text-brand">
+              <a href={e.sellerUrl} target="_blank" rel="noreferrer" aria-label={`${e.title} · ${e.seller}`} className="text-ink/40 hover:text-brand">
                 <ExternalLink className="size-4" />
               </a>
             )}
-            <button type="button" onClick={() => onAsk(`Tell me about "${e.title}" in ${e.city} and what 2 tickets would cost in total.`)} className="font-semibold text-brand underline-offset-4 hover:underline">
-              Ask Sindibad
+            <button type="button" onClick={() => onAsk(t('events.askPrompt', { title: e.title, city: city(e.city) }))} className="font-semibold text-brand underline-offset-4 hover:underline">
+              {t('events.ask')}
             </button>
           </span>
         </div>
@@ -136,28 +139,31 @@ function EventTile({ e, onAsk }: { e: EventView; onAsk: (text: string) => void }
 
 /** Real upcoming events, filterable by city. "Ask Sindibad" opens the conversation about that event. */
 export function EventsGrid({ onAsk }: { onAsk: (text: string) => void }) {
+  const { t, fmtDate, city: cityName } = useI18n()
   const [events, setEvents] = useState<EventView[] | null>(null)
-  const [city, setCity] = useState('All')
+  const [city, setCity] = useState('ALL')
 
   useEffect(() => {
     api<{ events: EventView[] }>('/events').then((r) => setEvents(r.events)).catch(() => setEvents([]))
   }, [])
 
-  if (!events) return <p className="py-6 text-center text-brand/50">Loading events…</p>
+  if (!events) return <p className="py-6 text-center text-brand/50">{t('events.loading')}</p>
   if (events.length === 0) return null
 
-  const cities = ['All', ...Array.from(new Set(events.map((e) => e.city))).sort()]
-  const shown = city === 'All' ? events : events.filter((e) => e.city === city)
+  const cities = Array.from(new Set(events.map((e) => e.city))).sort()
+  const shown = city === 'ALL' ? events : events.filter((e) => e.city === city)
 
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-brand">Happening soon in Morocco</h2>
-          <p className="text-xs text-ink/50">Listings from {events[0]?.seller}, checked {events[0]?.verifiedAt ? new Date(events[0].verifiedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'recently'}. Prices are "from" prices and can change.</p>
+          <h2 className="text-xl font-semibold text-brand">{t('events.title')}</h2>
+          <p className="text-xs text-ink/50">
+            {t('events.source', { seller: events[0]?.seller ?? '', date: events[0]?.verifiedAt ? fmtDate(events[0].verifiedAt) : t('events.recently') })}
+          </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {cities.map((c) => (
+          {['ALL', ...cities].map((c) => (
             <button
               key={c}
               type="button"
@@ -165,7 +171,7 @@ export function EventsGrid({ onAsk }: { onAsk: (text: string) => void }) {
               aria-pressed={city === c}
               className={`rounded-full px-3 py-1 text-sm font-medium transition ${city === c ? 'bg-brand text-cream' : 'bg-white text-brand hover:bg-brand/5'}`}
             >
-              {c}
+              {c === 'ALL' ? t('events.all') : cityName(c)}
             </button>
           ))}
         </div>

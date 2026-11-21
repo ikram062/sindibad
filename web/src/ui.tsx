@@ -7,11 +7,6 @@ export const primaryButton =
 export const ghostButton =
   'rounded-xl border border-brand/20 bg-white px-4 py-2 text-sm font-semibold text-brand transition hover:border-gold disabled:opacity-50'
 
-export const mad = (n: number) => `${n.toLocaleString('en-US', { maximumFractionDigits: 2 })} MAD`
-export const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-export const fmtDateTime = (iso: string) =>
-  new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-
 const tones = {
   green: 'bg-emerald-100 text-emerald-800',
   gold: 'bg-gold/20 text-brand',

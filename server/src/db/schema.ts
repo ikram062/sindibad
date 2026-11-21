@@ -170,6 +170,8 @@ export const rules = pgTable(
       .default('active'),
     outcome: text('outcome', { enum: ['notified', 'proposed', 'purchased', 'blocked'] }),
     outcomeDetail: text('outcome_detail'),
+    /** Parameters the client uses to write the outcome in the user's language (event, total, why...). */
+    outcomeData: jsonb('outcome_data').$type<Record<string, string | number>>(),
     firedAt: ts('fired_at'),
     /** The user's own words, so the Rules page can show where the rule came from. */
     sourceText: text('source_text'),
@@ -254,8 +256,11 @@ export const notifications = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: ['rule', 'purchase', 'system'] }).notNull(),
+    /** English fallback text. The client translates from `code` + `params` when it knows the code. */
     title: text('title').notNull(),
     body: text('body').notNull(),
+    code: text('code'),
+    params: jsonb('params').$type<Record<string, string | number>>(),
     /** When set, the notification offers a Confirm button for that proposal. */
     proposalId: uuid('proposal_id').references(() => proposals.id),
     readAt: ts('read_at'),

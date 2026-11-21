@@ -22,6 +22,8 @@ const chatLimit = rateLimiter(20, 60 * 1000);
 // The browser sends ONLY the new user message. History is loaded from the database, so a client can never
 // forge earlier assistant messages or tool results.
 const bodySchema = z.object({
+  // The interface language chosen in the app; a default for the assistant when the message gives no clue.
+  lang: z.enum(['en', 'fr', 'ar']).default('en'),
   message: z.object({
     id: z.string().max(100),
     role: z.literal('user'),
@@ -51,8 +53,8 @@ const friendlyError = (e: unknown) => {
   console.error('agent error:', (e as Error)?.message ?? e);
   const text = String((e as Error)?.message ?? e);
   return /429|quota|rate|exhausted/i.test(text)
-    ? 'The assistant is busy right now (free-tier limit). Wait a minute and try again.'
-    : 'The assistant hit a problem. Please try again.';
+    ? 'ERR_BUSY'
+    : 'ERR_FAILED'; // codes: the client writes the sentence in the user's language
 };
 
 chatRouter.post('/', async (req, res) => {
@@ -84,7 +86,7 @@ chatRouter.post('/', async (req, res) => {
   const settings = await getSettings(user.id);
   const result = streamText({
     model: google(env.GEMINI_MODEL),
-    instructions: buildInstructions({ user, autonomy: settings.autonomy, hasCard: Boolean(await getCard(user.id)), now: new Date() }),
+    instructions: buildInstructions({ user, uiLang: body.lang, autonomy: settings.autonomy, hasCard: Boolean(await getCard(user.id)), now: new Date() }),
     messages: modelMessages,
     tools,
     stopWhen: isStepCount(6),

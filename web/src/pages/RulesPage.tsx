@@ -1,8 +1,10 @@
 import { BellPlus, CheckCircle2, Hourglass, Radar } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError } from '../api'
+import { api } from '../api'
+import { useI18n } from '../i18n'
+import type { Key } from '../locales/en'
 import { queuePrompt } from '../prompts'
-import { Chip, fmtDate, fmtDateTime, ghostButton, mad, Panel, primaryButton } from '../ui'
+import { Chip, ghostButton, Panel, primaryButton } from '../ui'
 
 type Rule = {
   id: string
@@ -10,6 +12,7 @@ type Rule = {
   status: 'active' | 'paused' | 'fulfilled' | 'cancelled' | 'expired'
   outcome: 'notified' | 'proposed' | 'purchased' | 'blocked' | null
   outcomeDetail: string | null
+  outcomeData: Record<string, string | number> | null
   eventTitle: string | null
   query: string | null
   tier: string | null
@@ -21,13 +24,8 @@ type Rule = {
 }
 
 const statusTone = { active: 'green', paused: 'gold', fulfilled: 'grey', cancelled: 'grey', expired: 'grey' } as const
-const outcomeText = { notified: 'You were notified', proposed: 'Waiting for your confirmation', purchased: 'Bought automatically', blocked: 'Could not complete' }
-
-const IDEAS = [
-  { title: 'Watch a price', prompt: 'Tell me if Tiakola tickets drop under 260 MAD' },
-  { title: 'Buy when it is cheap', prompt: 'Buy 2 tickets for Hajib in Rabat if they cost under 125 MAD each' },
-  { title: 'In Darija', prompt: '3lemni ila nqes taman dyal Stormy 3la 450 dh' },
-]
+// The same wording as the notification the rule produced, so the Rules page and the bell always agree.
+const OUTCOME_CODE = { notified: 'RULE_ALERT', blocked: 'RULE_NEEDS_ID', purchased: 'RULE_PURCHASED', proposed: 'RULE_CONFIRM' } as const
 
 function Stat({ icon, label, value, hint }: { icon: React.ReactNode; label: string; value: number; hint: string }) {
   return (
@@ -43,6 +41,7 @@ function Stat({ icon, label, value, hint }: { icon: React.ReactNode; label: stri
 }
 
 function RuleItem({ rule, onChange }: { rule: Rule; onChange: () => void }) {
+  const { t, mad, fmtDate, fmtDateTime, errText, notifText } = useI18n()
   const [error, setError] = useState('')
   const act = async (action: 'pause' | 'resume' | 'cancel') => {
     setError('')
@@ -50,42 +49,45 @@ function RuleItem({ rule, onChange }: { rule: Rule; onChange: () => void }) {
       await api(`/rules/${rule.id}/action`, { action })
       onChange()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not update the rule.')
+      setError(errText(e))
     }
   }
-  const target = rule.eventTitle ?? `events matching "${rule.query}"`
+  const target = rule.eventTitle ?? t('rule.targetQuery', { q: rule.query ?? '' })
   const live = rule.status === 'active' || rule.status === 'paused'
+  const detail = rule.outcome
+    ? notifText(OUTCOME_CODE[rule.outcome], { ...(rule.outcomeData ?? {}), rule: '' }, { title: '', body: rule.outcomeDetail ?? '' }).body
+    : ''
 
   return (
     <Panel>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <Chip tone={rule.kind === 'buy' ? 'gold' : 'grey'}>{rule.kind === 'buy' ? 'Buy' : 'Alert'}</Chip>
-            <Chip tone={statusTone[rule.status]}>{rule.status}</Chip>
+            <Chip tone={rule.kind === 'buy' ? 'gold' : 'grey'}>{rule.kind === 'buy' ? t('rule.kindBuy') : t('rule.kindAlert')}</Chip>
+            <Chip tone={statusTone[rule.status]}>{t(`srule.${rule.status}` as Key)}</Chip>
           </div>
-          <p className="mt-2 font-semibold text-brand">{target}</p>
+          <p dir="auto" className="mt-2 font-semibold text-brand">{target}</p>
           <p className="text-sm text-ink/60">
-            {rule.kind === 'buy' && `${rule.quantity} × ${rule.tier ?? 'cheapest'} · `}
-            {rule.maxPriceMad !== null ? `up to ${mad(rule.maxPriceMad)} per ticket` : 'any price'} · until {fmtDate(rule.expiresAt)}
+            {rule.kind === 'buy' && t('rule.buyPrefix', { qty: rule.quantity, tier: rule.tier ?? t('rule.cheapest') })}
+            {rule.maxPriceMad !== null ? t('rule.upTo', { price: mad(rule.maxPriceMad) }) : t('rule.anyPrice')} · {t('rule.until', { date: fmtDate(rule.expiresAt) })}
           </p>
-          {rule.sourceText && <p dir="auto" className="mt-1 text-xs italic text-ink/45">"{rule.sourceText}"</p>}
+          {rule.sourceText && <p dir="auto" className="mt-1 text-xs italic text-ink/45">“{rule.sourceText}”</p>}
           {rule.outcome && (
             <p className="mt-2 text-sm text-ink/70">
-              <b>{outcomeText[rule.outcome]}</b>
+              <b>{t(`outcome.${rule.outcome}` as Key)}</b>
               {rule.firedAt && ` · ${fmtDateTime(rule.firedAt)}`}
-              {rule.outcomeDetail && <span className="block text-ink/50">{rule.outcomeDetail}</span>}
+              {detail && <span dir="auto" className="block text-ink/50">{detail}</span>}
             </p>
           )}
         </div>
         {live && (
           <div className="flex gap-2">
             {rule.status === 'active' ? (
-              <button type="button" className={ghostButton} onClick={() => act('pause')}>Pause</button>
+              <button type="button" className={ghostButton} onClick={() => act('pause')}>{t('rules.pause')}</button>
             ) : (
-              <button type="button" className={ghostButton} onClick={() => act('resume')}>Resume</button>
+              <button type="button" className={ghostButton} onClick={() => act('resume')}>{t('rules.resume')}</button>
             )}
-            <button type="button" className={ghostButton} onClick={() => act('cancel')}>Cancel</button>
+            <button type="button" className={ghostButton} onClick={() => act('cancel')}>{t('rules.cancel')}</button>
           </div>
         )}
       </div>
@@ -95,6 +97,7 @@ function RuleItem({ rule, onChange }: { rule: Rule; onChange: () => void }) {
 }
 
 export default function RulesPage() {
+  const { t } = useI18n()
   const [rules, setRules] = useState<Rule[] | null>(null)
   const load = useCallback(() => {
     api<{ rules: Rule[] }>('/rules').then((r) => setRules([...r.rules].reverse())).catch(() => setRules([]))
@@ -102,30 +105,35 @@ export default function RulesPage() {
   useEffect(load, [load])
 
   const count = (f: (r: Rule) => boolean) => (rules ?? []).filter(f).length
+  const IDEAS = [
+    { title: t('rules.i1.title'), prompt: t('rules.i1.prompt') },
+    { title: t('rules.i2.title'), prompt: t('rules.i2.prompt') },
+    { title: t('rules.i3.title'), prompt: t('rules.i3.prompt') },
+  ]
 
   return (
     <div className="space-y-5 py-4">
       <div>
-        <h1 className="text-3xl font-semibold text-brand">Your rules</h1>
-        <p className="text-ink/60">Standing instructions you gave in the chat. Each one expires and fires once. Pause or cancel any time.</p>
+        <h1 className="text-3xl font-semibold text-brand">{t('rules.title')}</h1>
+        <p className="text-ink/60">{t('rules.sub')}</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat icon={<Radar className="size-5" />} label="Watching" value={count((r) => r.status === 'active')} hint="active rules" />
-        <Stat icon={<Hourglass className="size-5" />} label="Needs you" value={count((r) => r.outcome === 'proposed')} hint="waiting for your confirmation" />
-        <Stat icon={<CheckCircle2 className="size-5" />} label="Done" value={count((r) => r.status === 'fulfilled' && r.outcome !== 'proposed')} hint="fired already" />
+        <Stat icon={<Radar className="size-5" />} label={t('rules.watching')} value={count((r) => r.status === 'active')} hint={t('rules.watchingHint')} />
+        <Stat icon={<Hourglass className="size-5" />} label={t('rules.needs')} value={count((r) => r.outcome === 'proposed')} hint={t('rules.needsHint')} />
+        <Stat icon={<CheckCircle2 className="size-5" />} label={t('rules.done')} value={count((r) => r.status === 'fulfilled' && r.outcome !== 'proposed')} hint={t('rules.doneHint')} />
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_320px]">
         <div className="space-y-3">
           {rules === null ? (
-            <p className="text-brand/60">Loading…</p>
+            <p className="text-brand/60">{t('common.loading')}</p>
           ) : rules.length === 0 ? (
             <Panel className="py-10 text-center">
               <BellPlus className="mx-auto size-10 text-gold" />
-              <p className="mt-3 text-lg font-semibold text-brand">No rules yet</p>
-              <p className="mx-auto mt-1 max-w-sm text-sm text-ink/60">A rule watches an event for you and tells you, or buys, when the price is right. Try one of the ideas.</p>
-              <a href="#/chat" className={`${primaryButton} mt-4 inline-block`}>Create one in the chat</a>
+              <p className="mt-3 text-lg font-semibold text-brand">{t('rules.emptyTitle')}</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-ink/60">{t('rules.emptyBody')}</p>
+              <a href="#/chat" className={`${primaryButton} mt-4 inline-block`}>{t('rules.emptyCta')}</a>
             </Panel>
           ) : (
             rules.map((r) => <RuleItem key={r.id} rule={r} onChange={load} />)
@@ -133,15 +141,15 @@ export default function RulesPage() {
         </div>
 
         <aside className="rounded-2xl bg-brand p-5 text-cream lg:sticky lg:top-2">
-          <h2 className="text-lg font-semibold">Ideas to try</h2>
-          <p className="mt-1 text-sm text-cream/70">Tap one and the assistant drafts the rule. You confirm it before it starts.</p>
+          <h2 className="text-lg font-semibold">{t('rules.ideas')}</h2>
+          <p className="mt-1 text-sm text-cream/70">{t('rules.ideasSub')}</p>
           <div className="mt-4 space-y-2">
             {IDEAS.map((i) => (
               <button
                 key={i.title}
                 type="button"
                 onClick={() => queuePrompt(i.prompt)}
-                className="block w-full rounded-xl border border-cream/20 bg-cream/10 p-3 text-left transition hover:border-gold hover:bg-cream/15"
+                className="block w-full rounded-xl border border-cream/20 bg-cream/10 p-3 text-start transition hover:border-gold hover:bg-cream/15"
               >
                 <span className="block text-xs font-semibold uppercase tracking-wide text-gold">{i.title}</span>
                 <span dir="auto" className="mt-0.5 block text-sm">{i.prompt}</span>

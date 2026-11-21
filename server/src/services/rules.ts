@@ -89,55 +89,71 @@ async function findMatch(rule: RuleRow): Promise<EventRow | undefined> {
   return undefined;
 }
 
-const notify = (userId: string, n: { kind: 'rule' | 'purchase' | 'system'; title: string; body: string; proposalId?: string }) =>
+const notify = (userId: string, n: { kind: 'rule' | 'purchase' | 'system'; title: string; body: string; code?: string; params?: Record<string, string | number>; proposalId?: string }) =>
   db.insert(notifications).values({ userId, ...n });
 
 type Outcome = 'notified' | 'proposed' | 'purchased' | 'blocked';
 
-async function fire(rule: RuleRow, user: SessionUser, event: EventRow): Promise<{ outcome: Outcome; detail: string }> {
+type Data = Record<string, string | number>;
+
+async function fire(rule: RuleRow, user: SessionUser, event: EventRow): Promise<{ outcome: Outcome; detail: string; data: Data }> {
   const view = await toView(event);
+  // English `title`/`body` are a fallback; the client writes the text in the user's language from `code` + `params`.
   const words = rule.sourceText ? `Your rule: "${rule.sourceText}". ` : '';
+  const base = { event: view.title, rule: rule.sourceText ?? '' };
 
   if (rule.kind === 'alert') {
     const detail = `${view.title} is on sale from ${view.fromPriceMad} MAD.`;
-    await notify(user.id, { kind: 'rule', title: 'Tickets are on sale', body: `${words}${detail}` });
-    return { outcome: 'notified', detail };
+    const data = { ...base, price: view.fromPriceMad };
+    await notify(user.id, { kind: 'rule', title: 'Tickets are on sale', body: `${words}${detail}`, code: 'RULE_ALERT', params: data });
+    return { outcome: 'notified', detail, data };
   }
 
   const total = await computeTotal(event, rule.tier ?? undefined, rule.quantity);
   if (user.kycStatus !== 'verified') {
     const detail = 'Verify your CIN with Mon e-ID so this rule can buy.';
-    await notify(user.id, { kind: 'rule', title: 'Rule matched, identity needed', body: `${words}${view.title} matches (${total.totalMad} MAD). ${detail}` });
-    return { outcome: 'blocked', detail };
+    const data = { ...base, total: total.totalMad };
+    await notify(user.id, { kind: 'rule', title: 'Rule matched, identity needed', body: `${words}${view.title} matches (${total.totalMad} MAD). ${detail}`, code: 'RULE_NEEDS_ID', params: data });
+    return { outcome: 'blocked', detail, data };
   }
 
   let whyNotAuto = 'Your settings ask you to confirm every purchase.';
+  let why: 'ASK' | 'LIMITS' | 'FAILED' = 'ASK';
+  let failMessage = '';
   const settings = await getSettings(user.id);
   if (settings.autonomy === 'auto') {
     const spent = await monthSpendMad(user.id);
     const withinLimits = total.totalMad <= Number(settings.maxPerPurchaseMad) && spent + total.totalMad <= Number(settings.maxPerMonthMad);
     if (!withinLimits) {
       whyNotAuto = 'This purchase is over your automatic-buying limits.';
+      why = 'LIMITS';
     } else {
       const bought = await executePurchase(user, { eventId: event.id, tier: rule.tier ?? undefined, quantity: rule.quantity, via: 'auto_rule', ruleId: rule.id });
       if (bought.ok) {
-        const detail = `Bought ${rule.quantity} × ${total.tier} for ${view.title}: ${total.totalMad} MAD.`;
-        await notify(user.id, { kind: 'purchase', title: 'Tickets bought automatically', body: `${words}${detail}` });
-        return { outcome: 'purchased', detail };
+        const paid = Number(bought.purchase.totalMad);
+        const detail = `Bought ${rule.quantity} × ${total.tier} for ${view.title}: ${paid} MAD.`;
+        const data = { ...base, quantity: rule.quantity, tier: total.tier, total: paid };
+        await notify(user.id, { kind: 'purchase', title: 'Tickets bought automatically', body: `${words}${detail}`, code: 'RULE_PURCHASED', params: data });
+        return { outcome: 'purchased', detail, data };
       }
       whyNotAuto = `Automatic purchase did not go through: ${bought.message}`;
+      why = 'FAILED';
+      failMessage = bought.message;
     }
   }
 
   // Ask mode (or auto mode could not proceed): draft a proposal and let the human decide.
   const proposal = await createPurchaseProposal(user, { eventId: event.id, tier: rule.tier ?? undefined, quantity: rule.quantity }, 'rule', RULE_PROPOSAL_TTL_MS);
+  const data: Data = { ...base, total: total.totalMad, why, ...(failMessage ? { message: failMessage } : {}) };
   await notify(user.id, {
     kind: 'rule',
     title: 'Confirm your purchase',
     body: `${words}${view.title} matches: ${total.totalMad} MAD in total. ${whyNotAuto}`,
+    code: 'RULE_CONFIRM',
+    params: data,
     proposalId: proposal.id,
   });
-  return { outcome: 'proposed', detail: whyNotAuto };
+  return { outcome: 'proposed', detail: whyNotAuto, data };
 }
 
 /** One pass of the rule engine. Plain code, no AI: runs every 30 s in server.ts and on demand in the demo. */
@@ -167,8 +183,8 @@ export async function runRules(now = new Date()) {
       if (!claimed) continue;
       try {
         const r = await fire(rule, user, event);
-        await db.update(rules).set({ outcome: r.outcome, outcomeDetail: r.detail }).where(eq(rules.id, rule.id));
-        results.push({ ruleId: rule.id, ...r });
+        await db.update(rules).set({ outcome: r.outcome, outcomeDetail: r.detail, outcomeData: r.data }).where(eq(rules.id, rule.id));
+        results.push({ ruleId: rule.id, outcome: r.outcome, detail: r.detail });
       } catch (e) {
         await db.update(rules).set({ status: 'active', firedAt: null }).where(eq(rules.id, rule.id));
         throw e;

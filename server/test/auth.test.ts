@@ -122,7 +122,7 @@ test('identity: nobody can purchase until signed in AND verified through Mon e-I
   // the phone releases a minor's ID: verification fails, user stays unverified
   const minor = await monEid(a, claims('AB' + digits(), { dateOfBirth: '2015-03-01' }));
   assert.equal(minor.status, 'failed');
-  assert.match(minor.reason, /18/);
+  assert.equal(minor.reason, 'UNDERAGE');
   assert.equal((await a('GET', '/api/purchases')).status, 403);
 
   // a user who declines on the phone stays unverified too
@@ -141,7 +141,7 @@ test('identity: nobody can purchase until signed in AND verified through Mon e-I
   const b = await signup('Bilal');
   const dup = await monEid(b, claims(cin));
   assert.equal(dup.status, 'failed');
-  assert.match(dup.reason, /already linked/);
+  assert.equal(dup.reason, 'DUPLICATE');
   assert.equal((await b('GET', '/api/purchases')).status, 403);
 });
 

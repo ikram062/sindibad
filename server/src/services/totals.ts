@@ -6,7 +6,12 @@ export const FOREIGN_SPREAD = 0.015;
 export const SINDIBAD_FEE_MAD = 0;
 export const MAX_QUANTITY = 8;
 
-export type CostLine = { label: string; amountMad?: number; note?: string };
+/** Structured, not sentences: the client writes the labels in the user's language. */
+export type CostLine =
+  | { kind: 'tickets'; quantity: number; tier: string; unit: number; currency: string; amountMad: number }
+  | { kind: 'rate'; currency: string; madPerUnit: number; recordedAt: string }
+  | { kind: 'spread'; percent: number; amountMad: number }
+  | { kind: 'fee'; amountMad: number };
 
 // shortcut: totals use JS floats rounded to 2 decimals, switch to integer minor units before real money moves
 export async function computeTotal(event: EventRow, tierName: string | undefined, quantity: number) {
@@ -25,14 +30,12 @@ export async function computeTotal(event: EventRow, tierName: string | undefined
   const feeMad = SINDIBAD_FEE_MAD;
   const totalMad = round2(ticketsMad + spreadMad + feeMad);
 
-  const lines: CostLine[] = [
-    { label: `${quantity} × ${tier.name} · ${tier.price.toLocaleString('en-US')} ${event.currency}`, amountMad: ticketsMad },
-  ];
+  const lines: CostLine[] = [{ kind: 'tickets', quantity, tier: tier.name, unit: tier.price, currency: event.currency, amountMad: ticketsMad }];
   if (foreign) {
-    lines.push({ label: `Rate 1 ${event.currency} = ${madPerUnit} MAD`, note: `recorded ${recordedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC` });
-    lines.push({ label: `Conversion spread (${FOREIGN_SPREAD * 100}%)`, amountMad: spreadMad });
+    lines.push({ kind: 'rate', currency: event.currency, madPerUnit, recordedAt: recordedAt.toISOString() });
+    lines.push({ kind: 'spread', percent: FOREIGN_SPREAD * 100, amountMad: spreadMad });
   }
-  lines.push({ label: 'Sindibad fee', amountMad: feeMad });
+  lines.push({ kind: 'fee', amountMad: feeMad });
 
   return {
     tier: tier.name,

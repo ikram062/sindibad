@@ -55,6 +55,7 @@ export type PollResult =
   | { status: 'failed'; reason: string }
   | { status: 'completed'; user: ReturnType<typeof publicUser> };
 
+/** `reason` is a code (BAD_FORMAT, EXPIRED, UNDERAGE, DUPLICATE, SESSION_EXPIRED) that the client translates. */
 const failSession = async (id: string, reason: string): Promise<PollResult> => {
   await db.update(identitySessions).set({ status: 'failed', failureReason: reason, claims: null }).where(eq(identitySessions.id, id));
   return { status: 'failed', reason };
@@ -65,9 +66,9 @@ export async function pollSession(user: SessionUser, id: string): Promise<PollRe
   const [row] = await db.select().from(identitySessions).where(owned(user.id, id));
   if (!row) return undefined;
 
-  if (row.status === 'pending' && row.expiresAt <= new Date()) return failSession(id, 'This verification expired. Start again.');
+  if (row.status === 'pending' && row.expiresAt <= new Date()) return failSession(id, 'SESSION_EXPIRED');
   if (row.status === 'declined') return { status: 'declined' };
-  if (row.status === 'failed') return { status: 'failed', reason: row.failureReason ?? 'Verification failed.' };
+  if (row.status === 'failed') return { status: 'failed', reason: row.failureReason ?? 'FAILED' };
   if (row.status === 'completed') {
     const [u] = await db.select().from(users).where(eq(users.id, user.id));
     return { status: 'completed', user: publicUser(u!) };
@@ -87,7 +88,7 @@ export async function pollSession(user: SessionUser, id: string): Promise<PollRe
   const result = await kyc.verify({ cin, fullName: claims.fullName, dateOfBirth: claims.dateOfBirth, expiryDate: claims.expiryDate });
   if (!result.ok) {
     await db.insert(auditLog).values({ userId: user.id, action: 'kyc.rejected', detail: { reason: result.reason, method: 'mon_eid_simulated' } });
-    return failSession(id, result.reason);
+    return failSession(id, result.code);
   }
 
   try {
@@ -103,7 +104,7 @@ export async function pollSession(user: SessionUser, id: string): Promise<PollRe
   } catch (err) {
     if (isUniqueViolation(err)) {
       await db.insert(auditLog).values({ userId: user.id, action: 'kyc.duplicate_cin' });
-      return failSession(id, 'This CIN is already linked to another account.');
+      return failSession(id, 'DUPLICATE');
     }
     throw err;
   }

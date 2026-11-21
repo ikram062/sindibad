@@ -17,6 +17,7 @@ rulesRouter.get('/', async (req, res) => {
       status: r.status,
       outcome: r.outcome,
       outcomeDetail: r.outcomeDetail,
+      outcomeData: r.outcomeData,
       eventId: r.eventId,
       eventTitle,
       query: r.query,

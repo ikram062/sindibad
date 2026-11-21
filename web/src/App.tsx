@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import AppLayout from './AppLayout'
 import { AuthScreen } from './AuthScreens'
 import { useAuth } from './auth'
+import { useI18n } from './i18n'
 import Landing from './Landing'
 import MonEidScreen from './MonEid'
 import ChatPage from './pages/ChatPage'
@@ -25,9 +26,10 @@ function Redirect({ to }: { to: string }) {
 /** Signed out -> sign in. Signed in but unverified -> Mon e-ID (skippable, but nothing can be bought). */
 function Gate({ route }: { route: string }) {
   const { user } = useAuth()
+  const { t } = useI18n()
   const [skipped, setSkipped] = useState(false)
 
-  if (user === undefined) return <div className="grid min-h-full place-items-center text-brand/60">Loading…</div>
+  if (user === undefined) return <div className="grid min-h-full place-items-center text-brand/60">{t('common.loading')}</div>
   if (!user) return <AuthScreen />
 
   const verified = user.kycStatus === 'verified'

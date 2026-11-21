@@ -12,7 +12,8 @@ export const BLOCKED_COUNTRIES = new Set(['RU', 'BY', 'IR', 'KP', 'SY', 'CU']);
 export const FOREIGN_ALLOWANCE_MAD = 20_000;
 
 export type ReasonCode = 'SOLD_OUT' | 'COUNTRY_BLOCKED' | 'ALLOWANCE' | 'SALE_NOT_OPEN' | 'KYC_REQUIRED' | 'NO_CARD';
-export type Reason = { code: ReasonCode; message: string; fixable: boolean };
+/** `message` is the English text (used by the assistant); the client translates from `code` + `params`. */
+export type Reason = { code: ReasonCode; message: string; fixable: boolean; params?: Record<string, string | number> };
 
 /** Foreign-currency spend this calendar year (paid purchases of events priced outside MAD). */
 async function foreignSpentThisYear(userId: string, now = new Date()): Promise<number> {
@@ -51,6 +52,7 @@ export async function checkEligibility(user: SessionUser, event: EventRow, total
         code: 'ALLOWANCE',
         message: `Not enough foreign-currency card allowance left this year (${allowanceRemainingMad} MAD left, demo limit).`,
         fixable: false,
+        params: { remaining: allowanceRemainingMad },
       });
     }
   }
@@ -60,6 +62,7 @@ export async function checkEligibility(user: SessionUser, event: EventRow, total
       code: 'SALE_NOT_OPEN',
       message: `Sales open on ${event.saleOpensAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. You can set a rule to be told, or to buy automatically.`,
       fixable: true,
+      params: { opensAt: event.saleOpensAt.toISOString() },
     });
   }
   if (user.kycStatus !== 'verified') {

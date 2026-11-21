@@ -2,9 +2,10 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, type UIMessage } from 'ai'
 import { Mic, Plus, SendHorizontal } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { ToolCard, type ToolPartLike } from '../cards'
 import { EventsGrid, Hero, StatusStrip } from '../Discover'
+import { useI18n, type Lang } from '../i18n'
 import { clearPrompt, peekPrompt } from '../prompts'
 
 /** **bold** is the only markdown the assistant uses. */
@@ -16,35 +17,35 @@ function Rich({ text }: { text: string }) {
   )
 }
 
-const friendly = (error: Error) => {
-  try {
-    return (JSON.parse(error.message) as { message?: string }).message ?? error.message
-  } catch {
-    return error.message || 'Something went wrong. Please try again.'
-  }
-}
-
 // Browser speech-to-text (Chrome / Edge). Free, no key; accuracy for Darija is limited, so the transcript stays editable.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SpeechRecognitionImpl = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
 
+const VOICE: Record<Lang, string> = { en: 'en-US', fr: 'fr-FR', ar: 'ar-MA' }
+
 function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () => void }) {
+  const { t, lang, errText } = useI18n()
+  // The transport is created once, so it reads the interface language from a ref that is always current.
+  const langRef = useRef(lang)
+  langRef.current = lang
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
         api: '/api/chat',
         // Only the new message goes up. The server keeps the history, so it cannot be forged from the browser.
-        prepareSendMessagesRequest: ({ messages }) => ({ body: { message: messages[messages.length - 1] } }),
+        prepareSendMessagesRequest: ({ messages }) => ({ body: { message: messages[messages.length - 1], lang: langRef.current } }),
       }),
   )
   const { messages, sendMessage, status, error } = useChat({ messages: initial, transport })
   const [input, setInput] = useState('')
-  const [lang, setLang] = useState('fr-FR')
+  const [voice, setVoice] = useState(VOICE[lang])
   const [listening, setListening] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognition = useRef<any>(null)
   const bottom = useRef<HTMLDivElement>(null)
   const busy = status === 'submitted' || status === 'streaming'
+
+  useEffect(() => setVoice(VOICE[lang]), [lang])
 
   useEffect(() => {
     // braces on purpose: scrollIntoView may return a Promise, and an effect must not
@@ -67,9 +68,9 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
   }, [])
 
   const send = (text: string) => {
-    const t = text.trim()
-    if (!t || busy) return
-    sendMessage({ text: t })
+    const message = text.trim()
+    if (!message || busy) return
+    sendMessage({ text: message })
     setInput('')
   }
   const submit = (e: FormEvent) => {
@@ -80,7 +81,7 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
   const toggleMic = () => {
     if (listening) return recognition.current?.stop()
     const rec = new SpeechRecognitionImpl()
-    rec.lang = lang
+    rec.lang = voice
     rec.interimResults = true
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => setInput(Array.from(e.results as ArrayLike<{ 0: { transcript: string } }>).map((r) => r[0].transcript).join(''))
@@ -88,6 +89,16 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
     rec.start()
     recognition.current = rec
     setListening(true)
+  }
+
+  // The server answers a failed request with JSON ({ error, message }) or, mid-stream, with an error code.
+  const friendly = (e: Error) => {
+    try {
+      const j = JSON.parse(e.message) as { error?: string; message?: string }
+      return errText(new ApiError(0, j.error ?? 'ERROR', j.message ?? ''))
+    } catch {
+      return errText(e)
+    }
   }
 
   const empty = messages.length === 0
@@ -112,7 +123,7 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
                         key={i}
                         dir="auto"
                         className={`my-1 max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 ${
-                          m.role === 'user' ? 'rounded-br-md bg-brand text-cream' : 'rounded-bl-md border border-brand/10 bg-white text-ink'
+                          m.role === 'user' ? 'rounded-ee-md bg-brand text-cream' : 'rounded-es-md border border-brand/10 bg-white text-ink'
                         }`}
                       >
                         <Rich text={part.text} />
@@ -125,7 +136,7 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
               </div>
             ))}
             {status === 'submitted' && (
-              <div className="flex w-fit gap-1 rounded-2xl rounded-bl-md bg-brand/5 px-4 py-3">
+              <div className="flex w-fit gap-1 rounded-2xl rounded-es-md bg-brand/5 px-4 py-3">
                 {[0, 1, 2].map((i) => (
                   <span key={i} className="size-1.5 animate-bounce rounded-full bg-brand/50" style={{ animationDelay: `${i * 0.15}s` }} />
                 ))}
@@ -143,29 +154,29 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             dir="auto"
-            placeholder="Type or speak your request…"
+            placeholder={t('chat.placeholder')}
             className="flex-1 bg-transparent py-1 outline-none placeholder:text-ink/40"
-            aria-label="Message"
+            aria-label={t('chat.message')}
           />
           {SpeechRecognitionImpl && (
             <>
-              <select value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Voice language" className="rounded bg-transparent text-xs text-brand/70">
+              <select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label={t('chat.voiceLang')} className="rounded bg-transparent text-xs text-brand/70">
                 <option value="fr-FR">FR</option>
                 <option value="ar-MA">AR</option>
                 <option value="en-US">EN</option>
               </select>
-              <button type="button" onClick={toggleMic} aria-label="Speak" className={listening ? 'text-red-600' : 'text-brand/70 hover:text-brand'}>
+              <button type="button" onClick={toggleMic} aria-label={t('chat.speak')} className={listening ? 'text-red-600' : 'text-brand/70 hover:text-brand'}>
                 <Mic className="size-5" />
               </button>
             </>
           )}
-          <button type="submit" disabled={busy || !input.trim()} aria-label="Send" className="text-brand disabled:opacity-40">
-            <SendHorizontal className="size-5" />
+          <button type="submit" disabled={busy || !input.trim()} aria-label={t('chat.send')} className="text-brand disabled:opacity-40">
+            <SendHorizontal className="size-5 rtl:-scale-x-100" />
           </button>
         </form>
         {!empty && (
           <button type="button" onClick={onReset} className="mx-auto mt-2 flex items-center gap-1 text-xs text-ink/50 hover:text-brand">
-            <Plus className="size-3" /> New chat
+            <Plus className="size-3" /> {t('chat.new')}
           </button>
         )}
       </div>
@@ -174,6 +185,7 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
 }
 
 export default function ChatPage() {
+  const { t } = useI18n()
   const [initial, setInitial] = useState<UIMessage[] | null>(null)
   const [version, setVersion] = useState(0)
 
@@ -183,7 +195,7 @@ export default function ChatPage() {
       .catch(() => setInitial([]))
   }, [version])
 
-  if (!initial) return <p className="py-10 text-center text-brand/60">Loading…</p>
+  if (!initial) return <p className="py-10 text-center text-brand/60">{t('common.loading')}</p>
   return (
     <Conversation
       key={version}

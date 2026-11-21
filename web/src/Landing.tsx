@@ -9,6 +9,8 @@ import Magnet from './components/react-bits/Magnet'
 import ShinyText from './components/react-bits/ShinyText'
 import SplitText from './components/react-bits/SplitText'
 import SpotlightCard from './components/react-bits/SpotlightCard'
+import { LanguageSwitcher, useI18n } from './i18n'
+import type { Key } from './locales/en'
 
 gsap.registerPlugin(ScrollTrigger, useGSAP)
 
@@ -46,6 +48,7 @@ function scrollToId(id: string) {
 
 /** Illustrative conversation: the whole product in one card. Numbers are examples, not live prices. */
 function ChatDemo() {
+  const { t, mad, lang } = useI18n()
   const root = useRef<HTMLDivElement>(null)
 
   useGSAP(
@@ -68,7 +71,7 @@ function ChatDemo() {
             ease: 'power2.out',
             onUpdate: () => {
               const el = q('.m-total')[0]
-              if (el) el.textContent = `${Math.round(total.v)} MAD`
+              if (el) el.textContent = mad(Math.round(total.v))
             },
           },
           '<',
@@ -76,7 +79,8 @@ function ChatDemo() {
         .from(q('.m-confirm'), { y: 14, opacity: 0, duration: 0.5 })
         .to(q('.m-confirm'), { boxShadow: '0 0 0 10px rgba(217,164,65,0)', duration: 1.2, repeat: 3, ease: 'power1.out' })
     },
-    { scope: root },
+    // Replays (from a clean state) when the language changes, so the text and the animation always match.
+    { scope: root, dependencies: [lang], revertOnUpdate: true },
   )
 
   return (
@@ -89,16 +93,14 @@ function ChatDemo() {
           <span className="grid size-8 place-items-center rounded-full bg-brand text-sm font-bold text-gold">S</span>
           <span className="font-semibold text-brand">Sindibad</span>
         </div>
-        <span className="rounded-full bg-gold/15 px-2.5 py-1 text-[11px] font-medium text-brand">
-          Example conversation
-        </span>
+        <span className="rounded-full bg-gold/15 px-2.5 py-1 text-[11px] font-medium text-brand">{t('demo.chip')}</span>
       </div>
 
-      <div className="m-user ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-[15px] text-cream">
-        bghit 2 tickets l Tiakola f Casablanca, ch7al ghadi nkhlles?
+      <div dir="auto" className="m-user ms-auto w-fit max-w-[85%] rounded-2xl rounded-ee-md bg-brand px-4 py-2.5 text-[15px] text-cream">
+        {t('demo.user')}
       </div>
 
-      <div className="m-typing mt-3 flex w-fit gap-1 rounded-2xl rounded-bl-md bg-brand/5 px-4 py-3">
+      <div className="m-typing mt-3 flex w-fit gap-1 rounded-2xl rounded-es-md bg-brand/5 px-4 py-3">
         {[0, 1, 2].map((i) => (
           <span
             key={i}
@@ -108,29 +110,29 @@ function ChatDemo() {
         ))}
       </div>
 
-      <div className="m-bot mt-3 max-w-[90%] rounded-2xl rounded-bl-md bg-brand/5 px-4 py-2.5 text-[15px] text-ink">
-        Voici l’événement. Le coût réel, tout compris, avant que vous confirmiez :
+      <div dir="auto" className="m-bot mt-3 max-w-[90%] rounded-2xl rounded-es-md bg-brand/5 px-4 py-2.5 text-[15px] text-ink">
+        {t('demo.bot')}
       </div>
 
       <div className="m-card mt-3 rounded-2xl border border-brand/10 bg-cream/70 p-4 text-sm">
         <div className="mb-3 flex items-center gap-2 font-semibold text-brand">
-          <Ticket className="size-4 text-gold" /> Tiakola · Casablanca · 5 Dec 2026
+          <Ticket className="size-4 text-gold" /> {t('demo.title')}
         </div>
-        <Line label="2 × Standard · from 320 MAD" value="640 MAD" />
-        <Line label="Sindibad fee" value="0 MAD" />
-        <Line label="Listing from iticket.ma · checked 21 Nov 2026" value="" muted />
+        <Line label={t('demo.tickets', { price: mad(320) })} value={mad(640)} />
+        <Line label={t('cost.fee')} value={mad(0)} />
+        <Line label={t('demo.source')} value="" muted />
         <div className="m-line flex items-center gap-1.5 py-1.5 text-emerald-700">
-          <Check className="size-4" /> You can buy this now
+          <Check className="size-4" /> {t('demo.ok')}
         </div>
         <div className="mt-2 flex items-baseline justify-between border-t border-brand/10 pt-3">
-          <span className="font-semibold text-brand">Total</span>
-          <span className="m-total text-xl font-bold text-brand">640 MAD</span>
+          <span className="font-semibold text-brand">{t('cost.total')}</span>
+          <span className="m-total text-xl font-bold text-brand">{mad(640)}</span>
         </div>
         <button
           type="button"
           className="m-confirm mt-4 w-full rounded-xl bg-gold py-2.5 font-semibold text-brand shadow-[0_0_0_0_rgba(217,164,65,0.5)]"
         >
-          Review &amp; confirm
+          {t('demo.review')}
         </button>
       </div>
     </div>
@@ -147,6 +149,7 @@ function Line({ label, value, muted }: { label: string; value: string; muted?: b
 }
 
 function Hero() {
+  const { t, lang } = useI18n()
   const hero = useRef<HTMLElement>(null)
   const chat = useRef<HTMLDivElement>(null)
 
@@ -175,14 +178,15 @@ function Hero() {
         dotSize={4}
         paused={reducedMotion()}
       />
-      <div className="pointer-events-none absolute -right-40 -top-40 -z-10 size-[560px] rounded-full bg-gold/25 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-52 -left-40 -z-10 size-[520px] rounded-full bg-brand-soft/15 blur-3xl" />
+      <div className="pointer-events-none absolute -end-40 -top-40 -z-10 size-[560px] rounded-full bg-gold/25 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-52 -start-40 -z-10 size-[520px] rounded-full bg-brand-soft/15 blur-3xl" />
 
-      <header className="absolute inset-x-0 top-0 z-10 mx-auto flex max-w-6xl items-center justify-end gap-6 px-6 py-6 text-sm font-medium text-brand">
-        <button type="button" onClick={() => scrollToId('how')} className="hover:text-gold">How it works</button>
-        <button type="button" onClick={() => scrollToId('why')} className="hover:text-gold">Why Sindibad</button>
+      <header className="absolute inset-x-0 top-0 z-10 mx-auto flex max-w-6xl flex-wrap items-center justify-end gap-x-6 gap-y-2 px-6 py-6 text-sm font-medium text-brand">
+        <button type="button" onClick={() => scrollToId('how')} className="hover:text-gold">{t('nav.how')}</button>
+        <button type="button" onClick={() => scrollToId('why')} className="hover:text-gold">{t('nav.why')}</button>
+        <LanguageSwitcher />
         <a href="#/chat" className="rounded-full border border-brand/20 bg-white/70 px-4 py-1.5 hover:border-gold">
-          Open chat
+          {t('nav.openChat')}
         </a>
       </header>
 
@@ -190,21 +194,19 @@ function Hero() {
         <div>
           <img src="/logo.png" alt="Sindibad" width={636} height={245} className="h-logo mb-8 w-64 md:w-80" />
           <div className="h-fade mb-4 text-sm font-semibold uppercase tracking-[0.18em]">
-            <ShinyText text="Tickets in Morocco, made simple" color="#0f4a36" shineColor="#d9a441" speed={3} />
+            <ShinyText key={`eyebrow-${lang}`} text={t('hero.eyebrow')} color="#0f4a36" shineColor="#d9a441" speed={3} />
           </div>
           <SplitText
+            key={`title-${lang}`}
             tag="h1"
-            text="Every show, one chat away."
+            text={t('hero.title')}
             splitType="words"
             trigger="load"
             delay={80}
-            textAlign="left"
-            className="text-5xl font-semibold leading-[1.05] text-brand md:text-7xl"
+            textAlign="start"
+            className="text-5xl font-semibold leading-[1.1] text-brand md:text-7xl"
           />
-          <p className="h-fade mt-6 max-w-xl text-pretty text-lg text-ink/70">
-            Ask in Darija, French or Arabic. Sindibad finds the tickets, shows the real cost in dirhams, and prepares the
-            purchase. You confirm every step.
-          </p>
+          <p className="h-fade mt-6 max-w-xl text-pretty text-lg text-ink/70">{t('hero.body')}</p>
           <div className="h-fade mt-8 flex flex-wrap items-center gap-4">
             <Magnet padding={60} magnetStrength={3}>
               <button
@@ -212,11 +214,11 @@ function Hero() {
                 onClick={() => scrollToId('how')}
                 className="flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 font-semibold text-cream shadow-lg shadow-brand/25 transition hover:bg-brand-soft"
               >
-                See how it works <ArrowRight className="size-4" />
+                {t('hero.cta')} <ArrowRight className="size-4 rtl:-scale-x-100" />
               </button>
             </Magnet>
             <a href="#/chat" className="px-3 py-3.5 font-semibold text-brand underline-offset-4 hover:underline">
-              Try the assistant
+              {t('hero.try')}
             </a>
           </div>
         </div>
@@ -229,23 +231,20 @@ function Hero() {
   )
 }
 
-const STEPS = [
-  { n: '01', title: 'Ask', text: 'Type or say it in Darija, French or Arabic. No forms, no menus.' },
-  {
-    n: '02',
-    title: 'See the real cost',
-    text: 'Price, currency conversion, fees and your card allowance, line by line, with the time the rate was recorded.',
-  },
-  { n: '03', title: 'You confirm', text: 'The assistant only prepares the purchase. Nothing happens until you tap confirm.' },
+const STEPS: { n: string; title: Key; text: Key }[] = [
+  { n: '01', title: 'how.1.title', text: 'how.1.text' },
+  { n: '02', title: 'how.2.title', text: 'how.2.text' },
+  { n: '03', title: 'how.3.title', text: 'how.3.text' },
 ]
 
-const FEATURES = [
-  { icon: ShieldCheck, title: 'Know before you pay', text: 'Country, seller rules and your card allowance are checked first. If it is a no, you see why.' },
-  { icon: Ticket, title: 'Official sellers only', text: 'No resale marketplace and no bots. Tickets are bought in your name at the official price.' },
-  { icon: Bell, title: 'Never miss a sale', text: 'Tell it what you want once. It tells you when sales open or prices drop.' },
+const FEATURES: { icon: typeof ShieldCheck; title: Key; text: Key }[] = [
+  { icon: ShieldCheck, title: 'why.1.title', text: 'why.1.text' },
+  { icon: Ticket, title: 'why.2.title', text: 'why.2.text' },
+  { icon: Bell, title: 'why.3.title', text: 'why.3.text' },
 ]
 
 function Sections() {
+  const { t } = useI18n()
   const root = useRef<HTMLDivElement>(null)
 
   useGSAP(
@@ -266,34 +265,33 @@ function Sections() {
   return (
     <div ref={root}>
       <section id="how" className="mx-auto max-w-6xl px-6 py-24">
-        <h2 className="max-w-2xl text-4xl font-semibold text-brand md:text-5xl">From a question to a ticket in three steps.</h2>
+        <h2 className="max-w-2xl text-4xl font-semibold text-brand md:text-5xl">{t('how.title')}</h2>
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {STEPS.map((s) => (
             <div key={s.n} className="step border-t-2 border-gold pt-5">
               <div className="text-sm font-semibold text-gold">{s.n}</div>
-              <h3 className="mt-2 text-2xl font-semibold text-brand">{s.title}</h3>
-              <p className="mt-2 text-ink/70">{s.text}</p>
+              <h3 className="mt-2 text-2xl font-semibold text-brand">{t(s.title)}</h3>
+              <p className="mt-2 text-ink/70">{t(s.text)}</p>
             </div>
           ))}
         </div>
       </section>
 
       <section id="why" className="mx-auto max-w-6xl px-6 pb-24">
-        <h2 className="max-w-2xl text-4xl font-semibold text-brand md:text-5xl">Built for people buying from Morocco.</h2>
+        <h2 className="max-w-2xl text-4xl font-semibold text-brand md:text-5xl">{t('why.title')}</h2>
         <div className="mt-12 grid gap-6 md:grid-cols-3">
           {FEATURES.map(({ icon: Icon, title, text }) => (
             <SpotlightCard key={title} theme="light" spotlightColor="#d9a441" className="feat p-7">
               <Icon className="size-7 text-gold" />
-              <h3 className="mt-4 text-xl font-semibold text-brand">{title}</h3>
-              <p className="mt-2 text-ink/70">{text}</p>
+              <h3 className="mt-4 text-xl font-semibold text-brand">{t(title)}</h3>
+              <p className="mt-2 text-ink/70">{t(text)}</p>
             </SpotlightCard>
           ))}
         </div>
       </section>
 
       <footer className="border-t border-brand/10 px-6 py-8 text-center text-sm text-ink/50">
-        <span className="font-semibold text-brand">Sindibad</span> <span dir="rtl">سندباد</span> · HPS ImpactPay Africa
-        hackathon prototype. Figures shown are illustrative.
+        <span className="font-semibold text-brand">Sindibad</span> <span dir="rtl">سندباد</span> · {t('footer.text')}
       </footer>
     </div>
   )

@@ -1,18 +1,20 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { ApiError } from './api'
 import { useAuth } from './auth'
+import { LanguageSwitcher, useI18n } from './i18n'
 import { ErrorLine, inputClass } from './ui'
 
 const primary =
   'w-full rounded-xl bg-brand py-3 font-semibold text-cream transition hover:bg-brand-soft disabled:opacity-60'
 
 export function Shell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+  const { t } = useI18n()
   return (
     <div className="grid min-h-full place-items-center px-4 py-10">
       <div
-        className={`w-full ${wide ? 'max-w-3xl' : 'max-w-md'} rounded-3xl border border-brand/10 bg-white/90 p-8 shadow-[0_30px_80px_-30px_rgba(15,74,54,0.35)]`}
+        className={`relative w-full ${wide ? 'max-w-3xl' : 'max-w-md'} rounded-3xl border border-brand/10 bg-white/90 p-8 shadow-[0_30px_80px_-30px_rgba(15,74,54,0.35)]`}
       >
-        <a href="#/" aria-label="Back to home">
+        <LanguageSwitcher className="absolute end-5 top-5" />
+        <a href="#/" aria-label={t('common.home')}>
           <img src="/logo.png" alt="Sindibad" width={636} height={245} className="mb-6 w-40" />
         </a>
         {children}
@@ -30,8 +32,9 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   )
 }
 
-/** Runs an async action, keeping `busy` and the server's error message for the form. */
+/** Runs an async action, keeping `busy` and a message (in the current language) for the form. */
 export function useAction() {
+  const { errText } = useI18n()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const run = async (action: () => Promise<void>) => {
@@ -40,7 +43,7 @@ export function useAction() {
     try {
       await action()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.')
+      setError(errText(e))
     } finally {
       setBusy(false)
     }
@@ -50,6 +53,7 @@ export function useAction() {
 
 export function AuthScreen() {
   const { signIn, signUp } = useAuth()
+  const { t } = useI18n()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -64,23 +68,22 @@ export function AuthScreen() {
 
   return (
     <Shell>
-      <h1 className="text-2xl font-semibold text-brand">{signingUp ? 'Create your account' : 'Welcome back'}</h1>
-      <p className="mt-1 text-sm text-ink/60">
-        {signingUp ? 'You will verify your identity with Mon e-ID next, so you can buy tickets.' : 'Sign in to continue.'}
-      </p>
+      <h1 className="text-2xl font-semibold text-brand">{signingUp ? t('auth.createTitle') : t('auth.welcome')}</h1>
+      <p className="mt-1 text-sm text-ink/60">{signingUp ? t('auth.createSub') : t('auth.signinSub')}</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         {signingUp && (
-          <Field label="Full name">
+          <Field label={t('field.name')}>
             <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required minLength={2} autoComplete="name" />
           </Field>
         )}
-        <Field label="Email">
-          <input className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        <Field label={t('field.email')}>
+          <input className={inputClass} type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
         </Field>
-        <Field label="Password">
+        <Field label={t('field.password')}>
           <input
             className={inputClass}
             type="password"
+            dir="ltr"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -90,7 +93,7 @@ export function AuthScreen() {
         </Field>
         <ErrorLine error={error} />
         <button className={primary} disabled={busy}>
-          {busy ? 'Please wait…' : signingUp ? 'Create account' : 'Sign in'}
+          {busy ? t('common.wait') : signingUp ? t('auth.createBtn') : t('auth.signinBtn')}
         </button>
       </form>
       <button
@@ -98,7 +101,7 @@ export function AuthScreen() {
         onClick={() => setMode(signingUp ? 'signin' : 'signup')}
         className="mt-5 w-full text-center text-sm font-medium text-brand underline-offset-4 hover:underline"
       >
-        {signingUp ? 'I already have an account' : 'Create an account'}
+        {signingUp ? t('auth.toSignin') : t('auth.toSignup')}
       </button>
     </Shell>
   )
