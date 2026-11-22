@@ -7,7 +7,7 @@ import { createRule } from '../services/rules';
 import { seedCatalog } from './catalog';
 import { db, pool, schema } from './client';
 
-const { users, paymentMethods, userSettings, rules, notifications, events } = schema;
+const { users, paymentMethods, userSettings, userPreferences, rules, notifications, events } = schema;
 
 if (env.NODE_ENV === 'production') throw new Error('Demo users must never be seeded in production.');
 
@@ -47,10 +47,12 @@ async function addUser(email: string, name: string, o: { verified?: boolean; car
 const sara = await addUser('sara@demo.ma', 'Sara Alaoui', { verified: true, card: true });
 await createRule(sara.id, { kind: 'alert', eventId: (await event('tiakola-casablanca')).id, maxPriceMad: 260, quantity: 2, expiresAt: inDays(14), sourceText: 'Tell me if Tiakola tickets drop under 260 MAD' });
 await executePurchase(sara, { eventId: (await event('abba-tribute-casablanca')).id, quantity: 2, via: 'manual' });
+await db.insert(userPreferences).values({ userId: sara.id, cities: ['Casablanca', 'Rabat'], categories: ['concert'], maxPriceMad: '400' });
 
 // 2. Youssef: verified, card, lets rules buy automatically within limits. A buy rule waiting, and one automatic purchase already made.
 //    (Would buy 2 Hajib tickets by itself if the price fell under 125 MAD; the real price is 150.)
 const youssef = await addUser('youssef@demo.ma', 'Youssef Bennani', { verified: true, card: true });
+await db.insert(userPreferences).values({ userId: youssef.id, cities: ['Rabat'], categories: [], keywords: 'hajib rnboi' });
 await db.insert(userSettings).values({ userId: youssef.id, autonomy: 'auto', maxPerPurchaseMad: '800', maxPerMonthMad: '3000', autoEnabledAt: new Date() });
 await createRule(youssef.id, { kind: 'buy', eventId: (await event('hajib-rabat')).id, maxPriceMad: 125, quantity: 2, expiresAt: inDays(30), sourceText: 'Buy 2 tickets for Hajib in Rabat if they drop under 125 MAD each' });
 const aissawa = await event('soiree-aissawa-rabat');
@@ -78,8 +80,8 @@ await createRule(lina.id, { kind: 'alert', eventId: (await event('stormy-despera
 
 console.log(`Demo users ready (password for all: ${PASSWORD})`);
 console.table([
-  { email: 'sara@demo.ma', identity: 'verified', card: 'yes', mode: 'ask', has: '1 price alert, 1 purchase' },
-  { email: 'youssef@demo.ma', identity: 'verified', card: 'yes', mode: 'auto (800/3000)', has: '1 buy rule, 1 auto purchase' },
+  { email: 'sara@demo.ma', identity: 'verified', card: 'yes', mode: 'ask', has: '1 price alert, 1 purchase, preferences' },
+  { email: 'youssef@demo.ma', identity: 'verified', card: 'yes', mode: 'auto (800/3000)', has: '1 buy rule, 1 auto purchase, preferences' },
   { email: 'nadia@demo.ma', identity: 'verified', card: 'no', mode: 'ask', has: 'nothing' },
   { email: 'omar@demo.ma', identity: 'NOT verified', card: 'no', mode: 'ask', has: 'nothing' },
   { email: 'lina@demo.ma', identity: 'NOT verified', card: 'no', mode: 'ask', has: '1 price alert' },

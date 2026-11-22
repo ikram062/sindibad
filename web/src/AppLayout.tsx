@@ -90,6 +90,7 @@ export default function AppLayout({ route, children }: { route: string; children
   const verified = user?.kycStatus === 'verified'
   const NAV = [
     { href: '#/chat', label: t('nav.chat') },
+    { href: '#/foryou', label: t('nav.foryou') },
     { href: '#/rules', label: t('nav.rules') },
     { href: '#/settings', label: t('nav.settings') },
   ]

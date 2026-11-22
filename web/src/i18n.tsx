@@ -1,6 +1,7 @@
 import { Globe } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ApiError } from './api'
+import { Dropdown } from './Dropdown'
 import { ar } from './locales/ar'
 import { en, type Dict, type Key } from './locales/en'
 import { fr } from './locales/fr'
@@ -133,24 +134,17 @@ export function useI18n(): I18n {
   return ctx
 }
 
-/** The little language dropdown. A native select keeps it accessible and works with the keyboard and on phones. */
+/** The language dropdown shown in every header. */
 export function LanguageSwitcher({ className = '' }: { className?: string }) {
   const { lang, setLang, t } = useI18n()
   return (
-    <label className={`inline-flex items-center gap-1.5 rounded-full border border-brand/20 bg-white/80 px-3 py-1.5 text-sm font-medium text-brand ${className}`}>
-      <Globe className="size-4 text-gold" aria-hidden />
-      <select
-        value={lang}
-        onChange={(e) => setLang(e.target.value as Lang)}
-        aria-label={t('lang.label')}
-        className="cursor-pointer bg-transparent outline-none"
-      >
-        {LANGS.map((l) => (
-          <option key={l.code} value={l.code}>
-            {l.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Dropdown
+      className={className}
+      value={lang}
+      options={LANGS.map((l) => ({ value: l.code, label: l.label }))}
+      onChange={setLang}
+      label={t('lang.label')}
+      icon={<Globe className="size-4 text-gold" aria-hidden />}
+    />
   )
 }

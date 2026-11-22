@@ -1,9 +1,10 @@
 import { desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
-import { fail } from '../auth/http';
+import { z } from 'zod';
+import { fail, parseBody } from '../auth/http';
 import { requireKyc } from '../auth/middleware';
 import { db, schema } from '../db/client';
-import { confirmPurchaseProposal } from '../services/proposals';
+import { confirmPurchaseProposal, createPurchaseProposal } from '../services/proposals';
 
 const { purchases, events } = schema;
 
@@ -37,6 +38,23 @@ purchasesRouter.get('/', async (req, res) => {
       createdAt: p.createdAt,
     })),
   });
+});
+
+const draftSchema = z.object({
+  eventId: z.string().uuid(),
+  tier: z.string().max(60).optional(),
+  quantity: z.number().int().min(1).max(8).default(1),
+});
+
+/** "Buy now" from the For-you page: prepares the purchase and shows the confirm card. Nothing is bought yet. */
+purchasesRouter.post('/draft', async (req, res) => {
+  const body = parseBody(draftSchema, req, res);
+  if (!body) return;
+  try {
+    res.status(201).json({ proposal: await createPurchaseProposal(req.user!, body, 'ui') });
+  } catch (e) {
+    fail(res, 400, 'INVALID', (e as Error).message);
+  }
 });
 
 /** The human tap: executes a purchase the agent (or a rule) drafted. */

@@ -33,7 +33,7 @@ type Total = { tier: string; quantity: number; currency: string; totalMad: numbe
 type Reason = { code: string; message: string; fixable: boolean; params?: Record<string, string | number> }
 type Eligibility = { status: 'allowed' | 'needs_action' | 'blocked'; reasons: Reason[]; allowanceRemainingMad: number | null }
 type RuleSummary = { kind: 'alert' | 'buy'; eventId?: string; query?: string; tier?: string; maxPriceMad?: number; quantity: number; expiresAt: string }
-type Proposal = {
+export type Proposal = {
   id: string
   kind: 'purchase' | 'rule'
   status: 'pending' | 'confirmed' | 'dismissed' | 'expired'
@@ -146,7 +146,7 @@ function Reasons({ el }: { el: Eligibility }) {
   )
 }
 
-function ProposalCard({ initial }: { initial: Proposal }) {
+export function ProposalCard({ initial }: { initial: Proposal }) {
   const { t, mad, fmtDate, errText, city } = useI18n()
   const [p, setP] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -233,7 +233,7 @@ function ProposalCard({ initial }: { initial: Proposal }) {
         <div className="mt-4 flex gap-2">
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || (purchase && eligibility?.status === 'blocked')}
             className={primaryButton}
             onClick={() =>
               act(purchase ? `/purchases/proposals/${p.id}/confirm` : `/rules/proposals/${p.id}/confirm`, (r) =>

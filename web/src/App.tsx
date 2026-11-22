@@ -6,11 +6,13 @@ import { useI18n } from './i18n'
 import Landing from './Landing'
 import MonEidScreen from './MonEid'
 import ChatPage from './pages/ChatPage'
+import ForYouPage from './pages/ForYouPage'
 import RulesPage from './pages/RulesPage'
 import SettingsPage from './pages/SettingsPage'
 
 const PAGES: Record<string, () => React.ReactElement> = {
   '#/chat': () => <ChatPage />,
+  '#/foryou': () => <ForYouPage />,
   '#/rules': () => <RulesPage />,
   '#/settings': () => <SettingsPage />,
 }

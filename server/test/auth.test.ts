@@ -249,3 +249,53 @@ test('rules: alerts fire once, "ask" mode proposes, "auto" mode buys only inside
   assert.equal(mine(await runRules(), [pausedId]).length, 0);
   assert.equal((await api('DELETE', '/api/settings/card')).body.settings.autonomy, 'ask');
 });
+
+test('for you: preferences filter and explain matches; rules and purchases from the page obey the same gates', async () => {
+  const { api } = await verifiedUser('Salma');
+  await api('POST', '/api/settings/card', {});
+  const bySlug = (items: any[], slug: string) => items.find((i) => i.event.slug === slug);
+
+  // no preferences yet: everything is listed and nothing is claimed as a match
+  const all = (await api('GET', '/api/recommendations')).body;
+  assert.equal(all.hasPreferences, false);
+  assert.ok(all.items.length > 5);
+
+  // city + type + budget are filters, and every result says why it matched
+  assert.equal((await api('PUT', '/api/preferences', { cities: ['Testville'], categories: ['concert'], maxPriceMad: 200, keywords: '' })).status, 200);
+  const reco = (await api('GET', '/api/recommendations')).body;
+  assert.equal(reco.hasPreferences, true);
+  assert.ok(bySlug(reco.items, 'test-onsale-mad'));
+  assert.equal(bySlug(reco.items, 'test-upcoming'), undefined, 'over the 200 MAD budget (it costs 400)');
+  assert.ok(reco.items.every((i: any) => i.event.city === 'Testville'));
+  assert.deepEqual([...bySlug(reco.items, 'test-onsale-mad').reasons].sort(), ['BUDGET', 'CATEGORY', 'CITY']);
+
+  // interests alone also filter; a bad category is refused
+  await api('PUT', '/api/preferences', { cities: [], categories: [], maxPriceMad: null, keywords: 'dakar' });
+  const kw = (await api('GET', '/api/recommendations')).body.items;
+  assert.ok(kw.length >= 1 && kw.every((i: any) => /dakar/i.test(i.event.title)));
+  assert.equal((await api('PUT', '/api/preferences', { cities: [], categories: ['nope'], maxPriceMad: null, keywords: '' })).status, 400);
+
+  // rules created from the page: same rules as in the chat
+  const event = await eventBySlug('test-onsale-mad');
+  assert.equal((await api('POST', '/api/rules', { kind: 'alert', eventId: event.id, maxPriceMad: 100 })).status, 201);
+  assert.equal((await api('POST', '/api/rules', { kind: 'alert', eventId: event.id, maxPriceMad: 100 })).body.error, 'DUPLICATE_RULE');
+  assert.equal((await api('POST', '/api/rules', { kind: 'buy', eventId: event.id })).body.error, 'PRICE_CAP_REQUIRED');
+  assert.equal((await api('POST', '/api/rules', { kind: 'buy', eventId: event.id, maxPriceMad: 100, quantity: 2 })).status, 201);
+  await api('PUT', '/api/preferences', { cities: ['Testville'], categories: [], maxPriceMad: null, keywords: '' });
+  const marked = bySlug((await api('GET', '/api/recommendations')).body.items, 'test-onsale-mad');
+  assert.deepEqual([...marked.activeRules].sort(), ['alert', 'buy'], 'the page shows which events already have a rule');
+
+  // an unverified user may set an alert but not a buying rule, and cannot draft a purchase
+  const stranger = await signup('Idriss');
+  assert.equal((await stranger('POST', '/api/rules', { kind: 'alert', eventId: event.id })).status, 201);
+  assert.equal((await stranger('POST', '/api/rules', { kind: 'buy', eventId: event.id, maxPriceMad: 100 })).body.error, 'KYC_REQUIRED');
+  assert.equal((await stranger('POST', '/api/purchases/draft', { eventId: event.id })).status, 403);
+
+  // "Buy now": draft shows the cost, nothing is bought until the tap
+  const draft = await api('POST', '/api/purchases/draft', { eventId: event.id, quantity: 2 });
+  assert.equal(draft.status, 201);
+  assert.equal(draft.body.proposal.summary.total.totalMad, 300);
+  const confirmed = await api('POST', `/api/purchases/proposals/${draft.body.proposal.id}/confirm`);
+  assert.equal(confirmed.status, 201);
+  assert.equal(confirmed.body.totalMad, 300);
+});

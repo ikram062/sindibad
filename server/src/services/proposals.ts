@@ -29,7 +29,7 @@ export type PurchasePayload = { eventId: string; tier?: string; quantity: number
 export async function createPurchaseProposal(
   user: SessionUser,
   payload: PurchasePayload,
-  source: 'chat' | 'rule',
+  source: 'chat' | 'rule' | 'ui',
   ttlMs = CHAT_TTL_MS,
 ) {
   const event = await getEventById(payload.eventId);

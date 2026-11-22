@@ -145,6 +145,18 @@ export const userSettings = pgTable('user_settings', {
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
+/** What the user likes. Drives the For-you page. Empty arrays / null mean no restriction. */
+export const userPreferences = pgTable('user_preferences', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  cities: jsonb('cities').$type<string[]>().notNull().default([]),
+  categories: jsonb('categories').$type<string[]>().notNull().default([]),
+  maxPriceMad: numeric('max_price_mad', { precision: 14, scale: 2 }),
+  keywords: text('keywords'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
 // ───────────────────────── rules, proposals, purchases ─────────────────────────
 
 /** A standing instruction the user gave in chat, e.g. "buy 2 tickets if this drops under 900 MAD". */
@@ -196,7 +208,7 @@ export const proposals = pgTable('proposals', {
   payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
   /** What the card shows (cost lines, totals, rule summary). */
   summary: jsonb('summary').$type<Record<string, unknown>>().notNull(),
-  source: text('source', { enum: ['chat', 'rule'] }).notNull().default('chat'),
+  source: text('source', { enum: ['chat', 'rule', 'ui'] }).notNull().default('chat'),
   status: text('status', { enum: ['pending', 'confirmed', 'dismissed', 'expired'] })
     .notNull()
     .default('pending'),

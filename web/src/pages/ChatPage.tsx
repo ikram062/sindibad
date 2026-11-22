@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { ToolCard, type ToolPartLike } from '../cards'
 import { EventsGrid, Hero, StatusStrip } from '../Discover'
+import { Dropdown } from '../Dropdown'
 import { useI18n, type Lang } from '../i18n'
 import { clearPrompt, peekPrompt } from '../prompts'
 
@@ -160,11 +161,18 @@ function Conversation({ initial, onReset }: { initial: UIMessage[]; onReset: () 
           />
           {SpeechRecognitionImpl && (
             <>
-              <select value={voice} onChange={(e) => setVoice(e.target.value)} aria-label={t('chat.voiceLang')} className="rounded bg-transparent text-xs text-brand/70">
-                <option value="fr-FR">FR</option>
-                <option value="ar-MA">AR</option>
-                <option value="en-US">EN</option>
-              </select>
+              <Dropdown
+                compact
+                placement="up"
+                value={voice}
+                onChange={setVoice}
+                label={t('chat.voiceLang')}
+                options={[
+                  { value: 'fr-FR', label: 'Français', short: 'FR' },
+                  { value: 'ar-MA', label: 'العربية', short: 'AR' },
+                  { value: 'en-US', label: 'English', short: 'EN' },
+                ]}
+              />
               <button type="button" onClick={toggleMic} aria-label={t('chat.speak')} className={listening ? 'text-red-600' : 'text-brand/70 hover:text-brand'}>
                 <Mic className="size-5" />
               </button>
